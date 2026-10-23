@@ -15,7 +15,8 @@ Ne pas recopier ce que le harnais injecte déjà : descriptions d'agents et d'ou
 
 ## Skills du dépôt — charger avant d'agir
 
-Une skill créée en cours de session n'entre pas dans le catalogue (reload sans effet, mesuré) ⇒ si `skill` ne la connaît pas, lire `.opencode/skills/<nom>/SKILL.md` directement.
+Skill créée en cours de session dans une racine déjà surveillée (globale ou projet) ⇒ visible aussitôt par `skill`/`skill_search`, édition de contenu comprise (mesuré 2026-10-23 : 197→199, sonde classée #1, `MARKER-V2` relu).
+Racine créée APRÈS démarrage (`<projet>/.opencode`) ⇒ surveillée seulement après re-arm d'un reload (`index.ts:507`) ; catalogue injecté au prompt ⇒ tour utilisateur suivant.
 
 | Domaine | Skill | Déclencher quand |
 |---|---|---|
