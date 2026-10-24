@@ -13,7 +13,8 @@ export type PreparedTool<T = unknown> = {
 
 export type PreparedCatalog<T = unknown> = {
   readonly version: string
-  readonly createdAt: number
+  /** Dernier usage : le TTL de `getPrepared`/`getPreparedEffect` court depuis cette date. */
+  createdAt: number
   readonly tools: readonly PreparedTool<T>[]
 }
 
@@ -106,8 +107,9 @@ const MAX_PREPARED_ENTRIES = 4
  * l'allowlist stricte, la version du registre (compteur monotone `++catalogSequence`, donc
  * remise à zéro par toute reconstruction, y compris un rechargement de plugin) et la version du
  * catalogue MCP (incrémentée à chaque connexion/déconnexion/rechargement) ; la disposition des
- * instances vide de toute façon ce cache. Dix minutes couvrent l'espacement normal entre deux
- * prompts sans servir un catalogue périmé.
+ * instances vide de toute façon ce cache. L'expiration est une fenêtre **d'inactivité** de dix
+ * minutes (le TTL court depuis le dernier usage) : une durée fixe depuis la construction expirait
+ * toutes les dix minutes même quand le catalogue servait à chaque tour.
  */
 const PREPARED_CACHE_TTL_MS = 10 * 60_000
 
@@ -121,7 +123,15 @@ export function getPrepared(
   const entries = cache.get(owner) ?? new Map<string, PreparedCatalog>()
   cache.set(owner, entries)
   const cached = entries.get(version)
-  if (cached && now - cached.createdAt < ttlMs) return { catalog: cached, hit: true }
+  if (cached && now - cached.createdAt < ttlMs) {
+    // Fenêtre GLISSANTE : le TTL court depuis le dernier usage, pas depuis la construction. Fixe,
+    // il expirait ~10 min après la construction même quand le catalogue servait toutes les deux
+    // minutes — mesuré le 2026-10-24 : 13 misses sur 65 résolutions de `build`, tous à ~11 min
+    // d'intervalle et à clé identique. La validité réelle est portée par la clé (modèle, agent,
+    // permissions, versions registre/MCP) et la disposition d'instance vide le cache.
+    cached.createdAt = now
+    return { catalog: cached, hit: true }
+  }
 
   const catalog = { version, createdAt: now, tools: build() } satisfies PreparedCatalog
   entries.delete(version)
@@ -145,7 +155,11 @@ export function getPreparedEffect<R, E, T>(
     const entries = cache.get(owner) ?? new Map<string, PreparedCatalog>()
     cache.set(owner, entries)
     const cached = entries.get(version) as PreparedCatalog<T> | undefined
-    if (cached && now - cached.createdAt < ttlMs) return { catalog: cached, hit: true }
+    if (cached && now - cached.createdAt < ttlMs) {
+      // Fenêtre GLISSANTE (voir `getPrepared`) : le TTL court depuis le dernier usage.
+      cached.createdAt = now
+      return { catalog: cached, hit: true }
+    }
     const tools = yield* build
     const catalog = { version, createdAt: now, tools } satisfies PreparedCatalog<T>
     entries.delete(version)

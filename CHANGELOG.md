@@ -5,6 +5,11 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [v2.4.30] - 2026-10-24
+
+### Fixed
+- **Le TTL du catalogue d'outils court désormais depuis le dernier usage, pas depuis sa construction.** Vérifié sur une session réelle en cours (« Pull et validation des composants Pstudio », 65 résolutions de l'agent `build`) : **52 hits (80 %)** à 26 ms médians, mais **13 misses** à 162 ms médians, dont **11 avec une clé strictement identique** à la résolution précédente et à ~11 minutes d'intervalle — signature d'une expiration, pas d'un changement de clé ni d'un long silence. La fenêtre était fixe : un catalogue construit à 06:40 expirait à 06:50 même s'il servait toutes les deux minutes. Le TTL est maintenant **glissant** (remis à zéro à chaque hit) : une entrée ne périme qu'après dix minutes d'**inactivité**, la validité réelle restant portée par la clé (modèle, agent, permissions, versions registre/MCP) et par la disposition d'instance. Test de non-régression ajouté (`le TTL court depuis le dernier usage…`) : 23 pass / 0 fail sur `tool-catalog*.test.ts`, `tsgo --noEmit` exit 0.
+
 ## [v2.4.29] - 2026-10-23
 
 ### Fixed

@@ -39,6 +39,24 @@ describe("session tool hot-path catalog", () => {
     expect(ToolCatalog.getPrepared(owner, "e", build("e")).hit).toBe(true)
   })
 
+  test("le TTL court depuis le dernier usage, pas depuis la construction", async () => {
+    // Fenêtre fixe mesurée le 2026-10-24 : 13 misses sur 65 résolutions de `build`, tous à ~11 min
+    // d'intervalle et à clé identique — le catalogue expirait dix minutes après sa construction
+    // même s'il servait à chaque tour.
+    const owner = {}
+    let builds = 0
+    const build = () => {
+      builds++
+      return [tool("read", "Read files")]
+    }
+    expect(ToolCatalog.getPrepared(owner, "v1", build, 200).hit).toBe(false)
+    await Bun.sleep(120)
+    expect(ToolCatalog.getPrepared(owner, "v1", build, 200).hit).toBe(true)
+    await Bun.sleep(120) // 240 ms depuis la construction, mais 120 ms depuis le dernier usage
+    expect(ToolCatalog.getPrepared(owner, "v1", build, 200).hit).toBe(true)
+    expect(builds).toBe(1)
+  })
+
   test("selects relevant tools while preserving core tools", () => {
     const catalog = {
       version: "v1",
