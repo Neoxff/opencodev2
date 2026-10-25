@@ -218,6 +218,94 @@ function inspectionExcerpt(output: string, maxChars: number) {
   return output.slice(0, highSurrogate ? end - 1 : end) + marker.slice(0, maxChars)
 }
 
+/**
+ * Total payload ceiling. Measured on live traffic: `inspect_batch` was the third
+ * largest producer of tool text (4 726 calls, 39.4M chars, 8 328 per call) with a
+ * per-result cap but no ceiling on the wave, and its output is re-sent on every
+ * later step of the session. The ceiling is applied to the serialised payload so
+ * the JSON stays parseable for the TUI tree; the largest results are shortened
+ * first and marked `truncated`, so the model loses the tail of one big result
+ * rather than the whole small ones.
+ */
+export const PAYLOAD_MAX_CHARS = 8_000
+
+/** Below this an excerpt says nothing, so the loop stops shredding and elides whole results. */
+export const PAYLOAD_EXCERPT_MIN = 400
+
+/** Whole-result replacement used when even minimum excerpts cannot fit the ceiling. */
+export const PAYLOAD_ELIDED = "[elided for the payload ceiling: inspect this target on its own with offset/limit]"
+
+export type InspectPayload = {
+  readOnly: true
+  rounds: number
+  results: ActionResult[]
+  note?: string
+}
+
+/** Longest output first: the ceiling costs the model one tail, not every small result. */
+function largestResult(results: readonly ActionResult[]): number {
+  let target = -1
+  let longest = 0
+  for (let index = 0; index < results.length; index++) {
+    const output = results[index]!.output
+    if (output && output.length > longest) {
+      longest = output.length
+      target = index
+    }
+  }
+  return target
+}
+
+export function capInspectPayload(
+  payload: InspectPayload,
+  maxChars = PAYLOAD_MAX_CHARS,
+): { json: string; capped: string[] } {
+  const capped: string[] = []
+  // The note itself costs bytes, so it is part of every serialisation the loop measures.
+  const render = () => {
+    if (capped.length > 0)
+      payload.note = `Payload capped at ${maxChars} chars: ${capped.join(", ")} shortened. Continue with a single target using offset= and limit=, ask for fewer actions, or lower maxCharsPerResult.`
+    return JSON.stringify(payload)
+  }
+  const note = (result: ActionResult) => {
+    if (!capped.includes(result.id)) capped.push(result.id)
+  }
+  let json = JSON.stringify(payload)
+
+  // First pass: shorten tails, largest result first.
+  while (json.length > maxChars) {
+    const target = largestResult(payload.results)
+    if (target < 0) break
+    const result = payload.results[target]!
+    const longest = result.output!.length
+    if (longest <= PAYLOAD_EXCERPT_MIN) break
+    const over = json.length - maxChars
+    // Never ask for as much as it already holds: without a strict decrease the
+    // loop could stall on an excerpt that is entirely marker.
+    const next = Math.max(PAYLOAD_EXCERPT_MIN, Math.min(longest - 1, longest - over - 200))
+    result.output = inspectionExcerpt(result.output!, next)
+    result.truncated = true
+    note(result)
+    json = render()
+  }
+
+  // Second pass: at the floor an excerpt still says something, so a payload that
+  // cannot fit elides whole results — largest first — rather than exceeding the
+  // ceiling. Sixteen elided results plus the note stay far below the ceiling.
+  while (json.length > maxChars) {
+    const target = largestResult(payload.results)
+    if (target < 0) break
+    const result = payload.results[target]!
+    if (result.output === PAYLOAD_ELIDED) break
+    result.output = PAYLOAD_ELIDED
+    result.truncated = true
+    note(result)
+    json = render()
+  }
+
+  return { json, capped }
+}
+
 export function localizeInspectAction<E, R>(
   action: InspectAction,
   run: () => Effect.Effect<{ title: string; output: string }, E, R>,
@@ -321,6 +409,8 @@ export const InspectBatchTool = Tool.define(
           const failed = ordered.filter((result) => result.status === "error").length
           const empty = ordered.filter((result) => result.status === "empty").length
           const skipped = ordered.filter((result) => result.status === "skipped").length
+          const payload = capInspectPayload({ readOnly: true, rounds: rounds.length, results: ordered })
+          const truncated = ordered.filter((result) => result.truncated).map((result) => result.id)
           return {
             title: `inspect_batch: ${ordered.length} action(s), ${failed} error(s), ${empty} empty, ${skipped} skipped`,
             metadata: {
@@ -329,11 +419,12 @@ export const InspectBatchTool = Tool.define(
               failed,
               empty,
               skipped,
-              truncated: ordered.filter((result) => result.truncated).map((result) => result.id),
+              truncated,
+              capped: payload.capped,
               readOnly: true,
               deduplicated: deduped.aliases.size,
             },
-            output: JSON.stringify({ readOnly: true, rounds: rounds.length, results: ordered }),
+            output: payload.json,
           }
         }),
     }

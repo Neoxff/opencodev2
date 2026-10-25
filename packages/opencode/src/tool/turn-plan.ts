@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { actionsEnabled, declare } from "@/session/turn-plan"
+import { actionsEnabled, current, declare, normalize, samePlan } from "@/session/turn-plan"
 import * as Tool from "./tool"
 
 // Le parametre reste declare dans le schema : le deriver de la porte casse le typage Effect
@@ -26,17 +26,29 @@ const Parameters = Schema.Struct({
   }),
 })
 
-type Metadata = { declared: boolean }
+type Metadata = { declared: boolean; unchanged?: boolean }
 
 export const TurnPlanTool = Tool.define<typeof Parameters, Metadata, never>(
   "turn_plan",
   Effect.gen(function* () {
     return {
       description:
-        "Declare the next action before ending a turn that still leaves work open. The plan is a prediction held in run state, never in the message history: the harness shows the real observation against `expect` at the head of the next turn, and a contradicting observation invalidates it. Each declaration replaces the previous one. Never declare a plan you will not execute. Do not narrate the plan in your message; declare it here instead.",
+        "Declare the next action before ending a turn that still leaves work open, and only when the batch changes: a plan already in force needs no new declaration and re-declaring it spends a whole step on a receipt. The plan is a prediction held in run state, never in the message history: the harness shows the real observation against `expect` at the head of the next turn, and a contradicting observation invalidates it. Each different declaration replaces the previous one. Never declare a plan you will not execute. Do not narrate the plan in your message; declare it here instead, in the same message as the calls it names.",
       parameters: Parameters,
       execute: (params, ctx) =>
         Effect.gen(function* () {
+          // Detect a repeat before recording it: an identical plan is not a new
+          // engagement, and the answer must say so rather than restate the plan as
+          // if it had been recorded. Measured cost of the standalone declaration
+          // this discourages: 2 279 steps, 46.5M input tokens on live traffic.
+          const candidate = normalize({
+            intent: params.intent,
+            expect: params.expect,
+            actions: params.actions ? [...params.actions] : undefined,
+            onFail: params.on_fail,
+            stopIf: params.stop_if,
+          })
+          const repeat = samePlan(current(ctx.sessionID)?.plan, candidate)
           const plan = declare(ctx.sessionID, {
             intent: params.intent,
             expect: params.expect,
@@ -52,6 +64,17 @@ export const TurnPlanTool = Tool.define<typeof Parameters, Metadata, never>(
               metadata: { declared: false },
               output:
                 "`intent` and `expect` are both required and must be non-empty: a declaration without them binds nothing, so nothing was recorded.",
+            }
+          }
+          if (repeat) {
+            return {
+              title: "turn_plan unchanged: already in force",
+              metadata: { declared: true, unchanged: true },
+              output: [
+                `No change: this is exactly the plan already in force, expecting "${plan.expect}".`,
+                "Nothing was recorded and no new step was needed for it.",
+                "Put your next real call in the same message as this one, or skip the declaration entirely while the plan still holds.",
+              ].join("\n"),
             }
           }
           return {

@@ -17,6 +17,7 @@ import {
   reminder,
   render,
   renderCommitment,
+  samePlan,
   settle,
 } from "./turn-plan"
 
@@ -67,6 +68,37 @@ describe("turn plan lifecycle is two-staged", () => {
     expect(settle(session, "holdings present").verdict).toBe("no-plan")
     expect(current(session)).toBeDefined()
     clear(session)
+  })
+
+  test("ignores a re-declaration of the same plan instead of pushing it back a stage", () => {
+    // The protocol used to ask for a declaration on every turn, so an identical
+    // plan came back each step: resetting `reminded` there would mean the plan
+    // could never reach `settle`, and every re-declaration cost a full step.
+    const session = "ses_turn_plan_redeclare"
+    declare(session, { intent: "probe", expect: "holdings present" }, 1)
+    expect(reminder(session)?.intent).toBe("probe")
+    declare(session, { intent: "probe", expect: "holdings present" }, 2)
+    expect(settle(session, "the ledger now shows holdings present").verdict).toBe("confirmed")
+    clear(session)
+  })
+
+  test("a genuinely changed plan still replaces the held one", () => {
+    const session = "ses_turn_plan_changed"
+    declare(session, { intent: "first", expect: "one" }, 1)
+    reminder(session)
+    declare(session, { intent: "second", expect: "two" }, 2)
+    expect(reminder(session)?.intent).toBe("second")
+    clear(session)
+  })
+
+  test("tells two plans apart field by field", () => {
+    const base = { intent: "read the ledger", expect: "holdings present", onFail: "grep the log", stopIf: "empty" }
+    expect(samePlan(base, { ...base })).toBe(true)
+    expect(samePlan(base, { ...base, intent: "read the ledger " })).toBe(false)
+    expect(samePlan(base, { ...base, expect: "holdings visible" })).toBe(false)
+    expect(samePlan(base, { ...base, onFail: undefined })).toBe(false)
+    expect(samePlan(base, { ...base, stopIf: undefined })).toBe(false)
+    expect(samePlan(base, undefined)).toBe(false)
   })
 
   test("consumes a reminded plan so it answers exactly one turn", () => {
@@ -175,14 +207,25 @@ describe("turn plan enablement is one shared predicate", () => {
   })
 })
 
-describe("the protocol demands a plan every turn without displaying it", () => {
-  test("still demands the plan on every turn, not only when work is left open", () => {
-    expect(instruction()).toContain("On every turn")
+describe("the protocol demands a plan only when the batch changes", () => {
+  test("no longer demands a declaration on every turn", () => {
+    // The previous protocol asked for a plan on every turn. Measured on live
+    // traffic that cost 2 279 steps whose only content was a `turn_plan` call.
+    const protocol = instruction()
+    expect(protocol).not.toContain("On every turn")
+    expect(protocol).toContain("only when the batch CHANGES")
+    expect(protocol).toContain("declare nothing and get to work")
+  })
+
+  test("forbids a standalone declaration and a re-declaration", () => {
+    const protocol = instruction()
+    expect(protocol).toContain("in the same message as the calls it names")
+    expect(protocol).toContain("Never re-declare an unchanged plan")
   })
 
   test("frames the turn as a batch instead of a single action", () => {
     const protocol = instruction()
-    expect(protocol).toContain("BATCH this turn delivers")
+    expect(protocol).toContain("OUTCOME this turn delivers")
     expect(protocol).toContain("parallel tool calls")
     expect(protocol).not.toContain("the ONE action")
   })

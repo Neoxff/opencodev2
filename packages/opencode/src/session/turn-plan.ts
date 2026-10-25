@@ -81,14 +81,39 @@ export function normalize(plan: TurnPlan): TurnPlan | undefined {
   return { intent, expect, actions, onFail: clip(plan.onFail), stopIf: clip(plan.stopIf) }
 }
 
+/** Field-by-field identity of two plans, used to detect a re-declaration. */
+export function samePlan(a: TurnPlan | undefined, b: TurnPlan | undefined): boolean {
+  if (!a || !b) return false
+  return (
+    a.intent === b.intent &&
+    a.expect === b.expect &&
+    a.onFail === b.onFail &&
+    a.stopIf === b.stopIf &&
+    (a.actions ?? []).join("\u0000") === (b.actions ?? []).join("\u0000")
+  )
+}
+
 /**
  * Record the turn's engagement, replacing any plan already held for the session.
  * Returns the normalized plan, or `undefined` when the declaration is too
  * incomplete to bind anything.
+ *
+ * A re-declaration of the *same* plan is not a new engagement. Measured on live
+ * traffic: the protocol asked for a declaration on every turn, so 2 279 steps
+ * carried nothing but a `turn_plan` call — a full model round-trip per step for
+ * a receipt. Identity is therefore preserved rather than replaced: the reminder
+ * stage is kept, so an unchanged plan still reaches `settle` instead of being
+ * pushed back to `reminded: false` for ever.
  */
 export function declare(sessionID: string, plan: TurnPlan, step?: number): TurnPlan | undefined {
   const normalized = normalize(plan)
   if (!normalized) return undefined
+  const held = plans.get(sessionID)
+  if (held && samePlan(held.plan, normalized)) {
+    held.declaredAt = Date.now()
+    if (step !== undefined) held.step = step
+    return normalized
+  }
   // Re-insert so the eviction order below follows recency, not first write.
   plans.delete(sessionID)
   if (plans.size >= MAX_SESSIONS) {
@@ -249,7 +274,7 @@ export function actionsEnabled(): boolean {
 export function instruction(): string {
   return [
     "<turn_plan_protocol>",
-    "On every turn, declare with the `turn_plan` tool the BATCH this turn delivers, and finish that batch before you stop:",
+    "Declare with the `turn_plan` tool only when the batch CHANGES, and always in the same message as the calls it names. A turn that opens with a `turn_plan` call and nothing else has spent a whole step on a receipt: measured on this harness, that pattern cost 2 279 steps and 46 million input tokens. If a plan is already in force and still holds, declare nothing and get to work.",
     "- `intent`: the bounded OUTCOME this turn delivers, as an imperative. Group every independent action you can complete now and run them together (parallel tool calls) instead of spending the turn on one step.",
     "- `expect`: the observation that proves the whole batch landed, as a concrete artifact: an exit code, a file path, or a measured value.",
     ...(actionsEnabled()
@@ -260,6 +285,7 @@ export function instruction(): string {
     "- `on_fail`: the bounded fallback if it does not (optional).",
     "- `stop_if`: what ends the turn (optional).",
     "Finish the batch in this turn. Declare only what genuinely remains: a plan that restates a step you could have completed wastes the turn.",
+    "Never re-declare an unchanged plan: the harness restates it for you, and an identical declaration records nothing new.",
     "This is a prediction, not a fact: the harness restates it next turn, then shows the real observation against it.",
     "Keep the plan out of your visible answer: declare it here instead of restating it as prose in your reply.",
     "Never declare a plan you will not execute.",

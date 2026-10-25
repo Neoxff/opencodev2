@@ -1,11 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Schema } from "effect"
 import {
+  capInspectPayload,
   deduplicateInspectActions,
   inspectDependencySatisfied,
   localizeInspectAction,
   orderedInspectResults,
   Parameters,
+  PAYLOAD_ELIDED,
+  PAYLOAD_EXCERPT_MIN,
+  PAYLOAD_MAX_CHARS,
   planInspectRounds,
   validateInspectActions,
   type InspectAction,
@@ -169,5 +173,64 @@ describe("inspect batch planning", () => {
     )
     expect(realFailure.status).toBe("error")
     expect(inspectDependencySatisfied(realFailure)).toBe(false)
+  })
+})
+
+describe("inspect batch payload ceiling", () => {
+  const produced = (id: string, chars: number): ActionResult => ({
+    id,
+    type: "read",
+    status: "success",
+    title: `read ${id}`,
+    output: "x".repeat(chars),
+  })
+  const payload = (...results: ActionResult[]) => ({ readOnly: true as const, rounds: 1, results })
+
+  test("leaves a payload under the ceiling byte for byte", () => {
+    const body = payload(produced("small", 200), produced("tiny", 40))
+    const before = JSON.stringify(body)
+    const capped = capInspectPayload(body)
+    expect(capped.capped).toEqual([])
+    expect(capped.json).toBe(before)
+    expect(capped.json.length).toBeLessThanOrEqual(PAYLOAD_MAX_CHARS)
+  })
+
+  test("caps the whole wave at 8000 chars, shortening the largest result first", () => {
+    const capped = capInspectPayload(payload(produced("small", 300), produced("huge", 30_000)))
+    expect(capped.json.length).toBeLessThanOrEqual(PAYLOAD_MAX_CHARS)
+    expect(capped.capped).toEqual(["huge"])
+    const parsed = JSON.parse(capped.json)
+    expect(parsed.results[0].output).toBe("x".repeat(300))
+    expect(parsed.results[0].truncated).toBeUndefined()
+    expect(parsed.results[1].truncated).toBe(true)
+    expect(parsed.results[1].output.length).toBeLessThan(30_000)
+    expect(parsed.results[1].output).toContain("[inspect_batch result truncated]")
+    expect(parsed.note).toContain(`Payload capped at ${PAYLOAD_MAX_CHARS} chars`)
+    expect(parsed.note).toContain("huge")
+    expect(parsed.note).toContain("offset=")
+  })
+
+  test("elides whole results rather than exceed a ceiling too small for excerpts", () => {
+    const capped = capInspectPayload(
+      payload(produced("a", 2000), produced("b", 2000), produced("c", 2000), produced("d", 2000)),
+      1500,
+    )
+    expect(capped.json.length).toBeLessThanOrEqual(1500)
+    const parsed = JSON.parse(capped.json)
+    expect(parsed.results.map((result: ActionResult) => result.id)).toEqual(["a", "b", "c", "d"])
+    expect(parsed.results.some((result: ActionResult) => result.output === PAYLOAD_ELIDED)).toBe(true)
+    expect(parsed.note).toContain("offset=")
+    // Structure survives for the TUI tree: no result is dropped from the payload.
+    expect(parsed.results.every((result: ActionResult) => result.status === "success")).toBe(true)
+  })
+
+  test("never grows a result that was already at the floor", () => {
+    const capped = capInspectPayload(
+      payload(...Array.from({ length: 16 }, (_, index) => produced(`action-${index}`, PAYLOAD_EXCERPT_MIN))),
+    )
+    expect(capped.json.length).toBeLessThanOrEqual(PAYLOAD_MAX_CHARS)
+    const parsed = JSON.parse(capped.json)
+    expect(parsed.results).toHaveLength(16)
+    for (const result of parsed.results) expect(result!.output!.length).toBeLessThanOrEqual(PAYLOAD_EXCERPT_MIN)
   })
 })
