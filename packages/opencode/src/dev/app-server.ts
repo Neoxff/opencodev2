@@ -53,6 +53,9 @@ export async function startAppDevServer(
     cwd: path.join(root, "packages", "app"),
     env: { ...process.env, ...appEnv(backend.hostname, backend.port), BROWSER: "none" },
     stdio: ["ignore", "pipe", "pipe"],
+    // Same console-flash cause as the task runner: a console child launched
+    // without CREATE_NO_WINDOW allocates and drops a window mid-session.
+    windowsHide: true,
   })
   child.stdout?.on("data", (chunk: Buffer) => process.stderr.write(chunk))
   child.stderr?.on("data", (chunk: Buffer) => process.stderr.write(chunk))
