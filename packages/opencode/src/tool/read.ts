@@ -22,6 +22,11 @@ const MAX_LINE_LENGTH = 2000
 const MAX_LINE_SUFFIX = `... (line truncated to ${MAX_LINE_LENGTH} chars)`
 const MAX_BYTES = 50 * 1024
 const MAX_BYTES_LABEL = `${MAX_BYTES / 1024} KB`
+// A read that hits the byte cap is a surprise the caller could not anticipate:
+// the request said "this file", not "the first 50 KB of it", and no model knows
+// a file's bytes-per-line before asking. One extra window is granted so the
+// common case lands complete; past this ceiling the offset pointer resumes.
+const AUTO_CONTINUE_CEILING = MAX_BYTES * 2
 const SAMPLE_BYTES = 4096
 const SUPPORTED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
 
@@ -115,7 +120,13 @@ export const ReadTool = Tool.define(
     const lines = Effect.fn("ReadTool.lines")(function* (filepath: string, opts: { limit: number; offset: number }) {
       const start = opts.offset - 1
       const raw: string[] = []
-      const flags = { bytes: 0, count: 0, cut: false, more: false, done: false }
+      const flags: { bytes: number; count: number; cut: boolean; more: boolean; done: boolean } = {
+        bytes: 0,
+        count: 0,
+        cut: false,
+        more: false,
+        done: false,
+      }
 
       // Note: prefer manual TextDecoder over Stream.decodeText — when the source stream
       // ends without flushing, decodeText drops the final unterminated line. We also
@@ -155,6 +166,41 @@ export const ReadTool = Tool.define(
       )
 
       return { raw, count: flags.count, cut: flags.cut, more: flags.more, offset: opts.offset }
+    })
+
+    // The byte cap is the one cut the tool can extend without contradicting the
+    // caller: an explicit `limit` is a deliberate window and is left alone, while
+    // an unqualified read that got capped only asked for the file. Merging the
+    // next window removes a round trip the model has no way to avoid — it cannot
+    // know the bytes-per-line of a file before reading it.
+    const linesAutomatic = Effect.fn("ReadTool.linesAutomatic")(function* (
+      filepath: string,
+      opts: { limit: number; offset: number; automatic: boolean },
+    ) {
+      const first = yield* lines(filepath, { limit: opts.limit, offset: opts.offset })
+      if (!opts.automatic || !first.cut) return first
+
+      const raw = [...first.raw]
+      const weigh = (items: string[]) => items.reduce((sum, line) => sum + Buffer.byteLength(line, "utf-8") + 1, 0)
+      let bytes = weigh(raw)
+      let cut: boolean = first.cut
+      let more: boolean = first.more
+      let count: number = first.count
+      while (cut && bytes < AUTO_CONTINUE_CEILING) {
+        const part = yield* lines(filepath, { limit: opts.limit, offset: first.offset + raw.length })
+        if (part.raw.length === 0) {
+          cut = false
+          more = false
+          break
+        }
+        raw.push(...part.raw)
+        bytes += weigh(part.raw)
+        count = part.count
+        cut = part.cut
+        more = part.more
+      }
+
+      return { raw, count, cut, more, offset: first.offset }
     })
 
     const isBinaryFile = (filepath: string, bytes: Uint8Array) => {
@@ -414,7 +460,13 @@ export const ReadTool = Tool.define(
       const cached = yield* cache.get(cacheKey)
       if (cached) return cached.data as Tool.ExecuteResult
 
-      const file = yield* lines(filepath, { limit, offset })
+      // An unqualified read extends past the byte cap once; an explicit offset or
+      // limit is a deliberate window and keeps the previous behaviour exactly.
+      const file = yield* linesAutomatic(filepath, {
+        limit,
+        offset,
+        automatic: params.limit === undefined && params.offset === undefined,
+      })
       if (file.count < file.offset && !(file.count === 0 && file.offset === 1)) {
         return yield* Effect.fail(
           new Error(`Offset ${file.offset} is out of range for this file (${file.count} lines)`),

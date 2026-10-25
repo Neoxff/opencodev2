@@ -1297,3 +1297,41 @@ describe("resolveTimeout", () => {
     expect(resolveTimeout(undefined, 60 * 60_000)).toBe(MAX_TIMEOUT_MS)
   })
 })
+
+describe("tool.shell result envelope", () => {
+  it.live("reports exit, duration and bytes after the output", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const result = yield* runIn(dir, run({ command: `echo hello`, description: "Echo", timeout: 10_000 }))
+
+      expect(result.output).toContain(`<shell_result exit="0"`)
+      expect(result.output).toContain(`duration="`)
+      expect(result.output).toContain(`bytes="`)
+      expect(result.metadata.durationMs as number).toBeGreaterThanOrEqual(0)
+      expect(result.metadata.bytes as number).toBeGreaterThan(0)
+    }),
+  )
+
+  it.live("names the line that carries the cause when the command fails", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const result = yield* runIn(
+        dir,
+        run({ command: `echo "fatal: broken"; exit 1`, description: "Fails with a cause", timeout: 10_000 }),
+      )
+
+      expect(result.output).toContain(`<shell_result exit="1"`)
+      expect(result.metadata.error).toBe("fatal: broken")
+    }),
+  )
+
+  it.live("invents no error line when a failing command printed nothing", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const result = yield* runIn(dir, run({ command: `exit 3`, description: "Silent failure", timeout: 10_000 }))
+
+      expect(result.output).toContain(`<shell_result exit="3"`)
+      expect(result.output).not.toContain(`error="(no output)"`)
+    }),
+  )
+})

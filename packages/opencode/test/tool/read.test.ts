@@ -403,7 +403,8 @@ describe("tool.read truncation", () => {
     Effect.gen(function* () {
       const test = yield* TestInstance
       const base = yield* load(path.join(FIXTURES_DIR, "models-api.json"))
-      const target = 60 * 1024
+      // Above the automatic-continuation ceiling, so the byte cap still applies.
+      const target = 300 * 1024
       const content = base.length >= target ? base : base.repeat(Math.ceil(target / base.length))
       yield* put(path.join(test.directory, "large.json"), content)
 
@@ -411,6 +412,37 @@ describe("tool.read truncation", () => {
       expect(result.metadata.truncated).toBe(true)
       expect(result.output).toContain("Output capped at")
       expect(result.output).toContain("Use offset=")
+    }),
+  )
+
+  it.instance("extends an unqualified read past the byte cap instead of returning a pointer", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      // 700 lines of ~94 bytes: over the 50 KB byte cap, under the 100 KB ceiling.
+      const content = Array.from({ length: 700 }, (_, i) => `${i} ${"x".repeat(90)}`).join("\n")
+      const filepath = path.join(test.directory, "capped.txt")
+      yield* put(filepath, content)
+
+      const result = yield* run({ filePath: filepath })
+      expect(result.metadata.truncated).toBe(false)
+      expect(result.output).not.toContain("Output capped at")
+      expect(result.output).not.toContain("Use offset=")
+      expect(result.output).toContain("End of file")
+      expect(result.output).toContain("699 ")
+    }),
+  )
+
+  it.instance("keeps the byte cap when an explicit limit was asked for", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const content = Array.from({ length: 700 }, (_, i) => `${i} ${"x".repeat(90)}`).join("\n")
+      const filepath = path.join(test.directory, "bounded.txt")
+      yield* put(filepath, content)
+
+      const result = yield* run({ filePath: filepath, limit: 100 })
+      expect(result.metadata.truncated).toBe(true)
+      expect(result.output).toContain("Showing lines 1-100 of 700")
+      expect(result.output).toContain("Use offset=101")
     }),
   )
 

@@ -264,6 +264,26 @@ function pathArgs(list: Part[], ps: boolean, cmd = false) {
 
 export type Preview = { text: string; truncated: boolean }
 
+// A failed command costs a second round trip when its result says nothing but
+// "exit 1": the caller then re-runs `git status`, lists the tree or re-reads the
+// log to find out what broke. The one line that carries the cause is already in
+// the output, so condense it into the result envelope instead of making the
+// model fetch it again.
+const ERROR_LINE = /(error|erreur|exception|fatal|failure|failed|refus|cannot|could not|not found|introuvable|impossible|échec|denied|invalid)/i
+
+const clip = (line: string) => (line.length > 160 ? `${line.slice(0, 157)}...` : line)
+
+function firstErrorLine(text: string): string | undefined {
+  let fallback: string | undefined
+  for (const raw of text.split(/\r?\n/).slice(0, 200)) {
+    const line = raw.trim()
+    if (!line || line.startsWith("<")) continue
+    fallback ??= line
+    if (ERROR_LINE.test(line)) return clip(line)
+  }
+  return fallback ? clip(fallback) : undefined
+}
+
 // Share of the budget kept at the head once a preview has to be windowed.
 const HEAD_SHARE = 0.25
 
@@ -574,6 +594,7 @@ export const ShellTool = Tool.define(
     ) {
       const limits = yield* trunc.limits()
       const keep = limits.maxBytes * 2
+      const startedAt = Date.now()
       let full = ""
       const window = previewWindow()
       const list: Chunk[] = []
@@ -773,6 +794,18 @@ export const ShellTool = Tool.define(
         output = `...output truncated...\n\nFull output saved to: ${file}\n\n` + output
       }
 
+      const elapsedMs = Date.now() - startedAt
+      const bytes = Buffer.byteLength(end.text, "utf-8")
+      const error = code !== null && code !== 0 ? firstErrorLine(end.text) : undefined
+      // One line, always present: the fields a caller would otherwise spend a
+      // second call re-deriving. `error` only on failure, because a success has
+      // nothing to report that is not already in the output.
+      output +=
+        `\n\n<shell_result exit="${code === null ? "none" : code}" duration="${elapsedMs}ms" bytes="${bytes}"` +
+        (cut ? ` truncated="true"` : "") +
+        (error ? ` error=${JSON.stringify(error)}` : "") +
+        " />"
+
       if (meta.length > 0) {
         output += "\n\n<shell_metadata>\n" + meta.join("\n") + "\n</shell_metadata>"
       }
@@ -783,6 +816,9 @@ export const ShellTool = Tool.define(
           exit: code,
           description: input.description,
           truncated: cut,
+          durationMs: elapsedMs,
+          bytes,
+          ...(error ? { error } : {}),
           previewTruncated: streamed ? last.truncated : preview(output).truncated,
           ...(cut && file ? { outputPath: file } : {}),
         },

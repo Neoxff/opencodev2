@@ -10,6 +10,15 @@ Use `${tmp}` for temporary work outside the workspace. This directory has alread
 
 IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.
 
+These shell commands duplicate a dedicated tool. Use the tool instead, whatever the shell:
+- listing a directory: `ls`, `dir`, `Get-ChildItem` -> `glob`
+- searching inside files: `grep`, `rg`, `findstr`, `Select-String` -> `grep`
+- printing a file: `cat`, `type`, `Get-Content`, `head`, `tail` -> `read` (with `offset`/`limit` for a range)
+- checking whether a path exists: `test -f`, `Test-Path` -> `glob`, or `read` for one file already known
+- checking what changed on disk: `git status` is fine, but listing the tree to find changed files -> `glob`
+
+The dedicated tools run in one parallel wave; shell commands run one at a time. The same probe therefore costs less through `glob`/`grep`/`read` than through the shell, and it costs one turn instead of several.
+
 ${commandSection}
 
 # Git and GitHub
