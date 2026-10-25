@@ -47,7 +47,7 @@ function extract(messages: MessageV2.WithParts[]) {
  * reduced to six lines, with no signal to the reader. What does not fit is now announced
  * with the path to read, because a silent drop is what makes a ruleset untrustworthy.
  */
-const SUMMARY_CHAR_BUDGET = 4_000
+const SUMMARY_CHAR_BUDGET = 8_200
 
 function renderInstruction(filepath: string, content: string, mode: SessionContextRollout.InjectionInstructionsMode) {
   if (mode === "off") return undefined

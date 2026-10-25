@@ -125,6 +125,12 @@ export async function spawnBackground(opts: {
     env: opts.env,
     detached: process.platform !== "win32",
     stdio: ["ignore", out.fd, out.fd],
+    // Without this, `shell: true` makes Windows launch a `cmd.exe` console child
+    // that is allocated its own console window: the user sees a terminal flash
+    // open and vanish on every background task start. `detached` is deliberately
+    // false here (see above), so CREATE_NO_WINDOW is honoured rather than
+    // ignored as it would be alongside DETACHED_PROCESS.
+    windowsHide: true,
   })
   child.unref()
   await out.close()
