@@ -5,6 +5,18 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [v2.4.31] - 2026-10-25
+
+### Changed
+- **`turn_plan` n'est plus un step à lui seul.** Mesuré sur la base vivante (943 sessions, 106 505 appels d'outils, 2026-09-08 → 2026-10-25) : `turn_plan` pèse **19,7 % de tous les appels d'outils** pour **5,9 % du texte**, et **2 279 steps** ne contiennent rien d'autre que cette déclaration — un aller-retour modèle complet pour un reçu. La cause est le protocole, qui réclamait une déclaration à **chaque** tour ; le bookkeeping est passé de 6,2 % des steps sur l'ancien harnais à **18,9 %** sur celui-ci. Trois changements : `declare()` ne réinitialise plus l'état `reminded` quand la déclaration est identique (sinon le plan ne pouvait plus jamais atteindre `settle`), un `samePlan()` compare les deux plans champ par champ, et l'outil répond `turn_plan unchanged: already in force` sans rien enregistrer. Le protocole demande désormais une déclaration **seulement quand le lot change**, dans le **même message** que les appels qu'elle nomme, et interdit explicitement la re-déclaration.
+- **`inspect_batch` plafonne la charge qu'il rend.** C'était le **3ᵉ producteur de texte** du harnais — 4 726 appels, **39,4 M caractères**, **8 328 caractères par appel** — avec un plafond *par résultat* mais **aucun plafond sur la vague**, et sa sortie est re-envoyée à chaque step suivant de la session (coût amplifié mesuré ×161 sur l'ensemble des outils). La charge sérialisée est maintenant bornée à **8 000 caractères** : le résultat le plus long est raccourci d'abord, marqué `truncated`, et une note donne le pointeur de continuation (`Continue with a single target using offset= and limit=`). Si des extraits au plancher de 400 caractères ne suffisent pas, des résultats entiers sont élidés — dans l'ordre de taille — pour que le JSON reste **sous** le plafond et parcourable par l'arbre TUI ; aucun résultat n'est retiré de la structure.
+
+### Fixed
+- Une re-déclaration identique de `turn_plan` renvoyait la même confirmation qu'une vraie déclaration, ce qui rendait le doublon indistinguable d'un enregistrement : elle répond désormais `unchanged` avec un `metadata.unchanged` explicite.
+- La sortie de `inspect_batch` pouvait dépasser 20 000 caractères malgré `maxCharsPerResult` (16 actions × 4 000), et rien ne bornait la somme : le plafond de payload la borne désormais quel que soit le nombre d'actions.
+
+Vérifié : `bun typecheck` exit 0 ; 52 tests passent sur `inspect-batch.test.ts` et `turn-plan.test.ts` (dont quatre nouveaux sur le plafond de payload et trois sur la re-déclaration).
+
 ## [v2.4.30] - 2026-10-24
 
 ### Fixed
