@@ -1,0 +1,6 @@
+{
+  "repo": "mon-compte/opencodev2",
+  "defaultBranch": "main",
+  "port": 4096,
+  "workspace": "."
+}

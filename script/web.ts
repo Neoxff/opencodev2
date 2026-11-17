@@ -10,13 +10,30 @@
  */
 import { existsSync } from "node:fs"
 import path from "node:path"
+import { LinkConfigError, loadLinkConfig, workspacePath } from "./link-config"
 
 const root = path.resolve(import.meta.dir, "..")
 const webui = path.join(root, "packages", "webui")
 const dist = path.join(webui, "dist")
 const entry = path.join(root, "packages", "opencode", "src", "index.ts")
 
-const port = process.env.OPENCODE_SERVER_PORT ?? "4096"
+// Liaison facultative : sans fichier, comportement identique à aujourd'hui.
+// Avec un fichier invalide, on refuse de démarrer plutôt que de deviner un port.
+let link
+try {
+  link = loadLinkConfig(root)
+} catch (error) {
+  if (error instanceof LinkConfigError) {
+    console.error(`[web] configuration de liaison invalide : ${error.message}`)
+    process.exit(1)
+  }
+  throw error
+}
+if (link) {
+  console.log(`[web] dépôt lié : ${link.repo} (branche ${link.defaultBranch}, espace ${workspacePath(root, link)})`)
+}
+
+const port = process.env.OPENCODE_SERVER_PORT ?? String(link?.port ?? 4096)
 const rebuild = process.argv.includes("--rebuild")
 const bun = process.execPath
 
