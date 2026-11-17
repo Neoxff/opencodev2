@@ -53,13 +53,29 @@ function notFound() {
   return HttpServerResponse.jsonUnsafe({ error: "Not Found" }, { status: 404 })
 }
 
+/**
+ * Injecte le jeton Git local dans le HTML servi sous forme de balise meta, pour
+ * que le panneau « Dépôt » puisse appeler l'API /opencodev2/git/*. Le jeton est
+ * généré par le lanceur à chaque démarrage ; sans jeton valide, le HTML reste
+ * inchangé. Aucune écriture sur disque, aucun secret dans le dépôt.
+ */
+function withGitToken(body: Uint8Array): Uint8Array {
+  const token = process.env.OPENCODEV2_GIT_TOKEN
+  if (!token || !/^[0-9a-f]{64}$/.test(token)) return body
+  const html = new TextDecoder().decode(body)
+  if (!html.includes("</head>")) return body
+  const meta = `<meta name="opencodev2-git-token" content="${token}">`
+  return new TextEncoder().encode(html.replace("</head>", `${meta}</head>`))
+}
+
 function embeddedUIResponse(file: string, body: Uint8Array) {
   const mime = AppFileSystem.mimeType(file)
   const headers = new Headers({ "content-type": mime })
+  const html = mime.startsWith("text/html") ? withGitToken(body) : body
   if (mime.startsWith("text/html")) {
-    headers.set("content-security-policy", cspForHtml(new TextDecoder().decode(body)))
+    headers.set("content-security-policy", cspForHtml(new TextDecoder().decode(html)))
   }
-  return HttpServerResponse.raw(body, { headers })
+  return HttpServerResponse.raw(html, { headers })
 }
 
 export function serveEmbeddedUIEffect(
