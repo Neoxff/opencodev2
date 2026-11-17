@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "machine": {
+    "date": "2026-11-17T23:47:32.054Z",
+    "systeme": "linux",
+    "noyau": "7.3.4-arch1-1",
+    "architecture": "x64",
+    "processeur": "12th Gen Intel(R) Core(TM) i3-1215U",
+    "coeurs": 8,
+    "memoireGiB": 15.3,
+    "bun": "1.4.2",
+    "node": "v26.3.0",
+    "git": "62697076f"
+  },
+  "protocole": {
+    "passages": 10,
+    "chauffage": 2,
+    "statistiques": "médiane et p95 sur 10 passages indépendants",
+    "note": "Aucun changement de comportement de l'application ; banc reproductible via bun scripts/bench/run.ts."
+  },
+  "mesures": {
+    "etoiles": {
+      "etoiles": 2000,
+      "imagesParSeconde": {
+        "n": 10,
+        "mediane": 59.88,
+        "p95": 59.88,
+        "min": 59.88,
+        "max": 59.88,
+        "moyenne": 59.88
+      },
+      "calculMsParImage": {
+        "n": 10,
+        "mediane": 1.3,
+        "p95": 1.4,
+        "min": 1.3,
+        "max": 1.4,
+        "moyenne": 1.32
+      },
+      "trace": {
+        "dureeTachesMs": 0.002,
+        "dureeScriptMs": 0
+      },
+      "outils": {
+        "playwright": "1.63.0",
+        "chromium": "cache ms-playwright"
+      }
+    },
+    "evenements": {
+      "evenements": 10000,
+      "dureeMs": {
+        "n": 10,
+        "mediane": 2.556,
+        "p95": 6.029,
+        "min": 2.238,
+        "max": 6.029,
+        "moyenne": 3.397
+      },
+      "debitEvenementsParSeconde": 3912363
+    },
+    "markdown": {
+      "lignes": 5000,
+      "dureeMs": {
+        "n": 10,
+        "mediane": 113.23,
+        "p95": 166.797,
+        "min": 105.732,
+        "max": 166.797,
+        "moyenne": 120.06
+      },
+      "outil": "17.0.1"
+    },
+    "recherche": {
+      "fichiers": 20000,
+      "dureeMs": {
+        "n": 10,
+        "mediane": 55.567,
+        "p95": 62.266,
+        "min": 48.485,
+        "max": 62.266,
+        "moyenne": 55.367
+      },
+      "outil": "ripgrep (rg)"
+    },
+    "demarrage": {
+      "commande": "bun run web",
+      "dureeMs": {
+        "n": 10,
+        "mediane": 4937.895,
+        "p95": 5238.922,
+        "min": 2689.62,
+        "max": 5238.922,
+        "moyenne": 4740.279
+      }
+    }
+  }
+}
