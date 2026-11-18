@@ -12,6 +12,7 @@ import {
   ErreurGitApi,
   etatDepot,
   gitApi,
+  libelleErreur,
   type EntreeJournal,
   type GitEtat,
   type GitStatus,
@@ -23,6 +24,7 @@ const ETAT_TEXTE: Record<GitEtat, string> = {
   "a-jour": "À jour",
   "en-avance": "En avance",
   "en-retard": "En retard",
+  divergent: "Divergent",
   conflit: "Conflit",
   "hors-ligne": "Hors ligne",
 }
@@ -225,7 +227,19 @@ export function GitPanel() {
             </Show>
 
             <Show when={erreur()}>
-              {(e) => <div class="git-erreur" role="alert">Erreur : {e()}</div>}
+              {(e) => (
+                <div class="git-erreur" role="alert">
+                  <span class="git-erreur-message">{libelleErreur(e())}</span>
+                  <button
+                    class="git-erreur-action"
+                    title="Réessayer (actualiser l'état)"
+                    aria-label="Réessayer"
+                    onClick={() => void actualiser()}
+                  >
+                    ↻
+                  </button>
+                </div>
+              )}
             </Show>
 
             <Show when={s().modified.length > 0}>

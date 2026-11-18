@@ -4,6 +4,7 @@ import {
   ErreurGitApi,
   etatDepot,
   gitApi,
+  libelleErreur,
   lireJeton,
   type GitStatus,
 } from "./git-client"
@@ -48,7 +49,23 @@ describe("etatDepot", () => {
   test("en avance", () => expect(etatDepot({ ...statut, ahead: 2 }, undefined)).toBe("en-avance"))
   test("en retard", () => expect(etatDepot({ ...statut, behind: 3 }, undefined)).toBe("en-retard"))
   test("conflit", () => expect(etatDepot(statut, "CONFLIT")).toBe("conflit"))
+  test("divergent (NON_FAST_FORWARD)", () => expect(etatDepot(statut, "NON_FAST_FORWARD")).toBe("divergent"))
   test("hors ligne", () => expect(etatDepot(undefined, "PAS_DE_RESEAU")).toBe("hors-ligne"))
+})
+
+describe("libelleErreur", () => {
+  test("message court et actionnable pour une divergence", () => {
+    expect(libelleErreur("NON_FAST_FORWARD")).toBe("Branches divergentes : fusion manuelle nécessaire.")
+  })
+  test("message court pour un conflit", () => {
+    expect(libelleErreur("CONFLIT")).toBe("Conflit de fusion : résolvez les fichiers.")
+  })
+  test("ne révèle jamais de stdout git ni de chemin", () => {
+    const l = libelleErreur("NON_FAST_FORWARD")
+    expect(l).not.toContain("/")
+    expect(l.length).toBeLessThan(80)
+  })
+  test("repli générique pour un code inconnu", () => expect(libelleErreur("AUTRE")).toBe("Erreur Git."))
 })
 
 describe("dateRelative", () => {

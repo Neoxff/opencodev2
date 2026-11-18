@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import {
   cheminSansRisque,
+  classerErreur,
   GitError,
   gitBranch,
   gitCommit,
@@ -127,5 +128,121 @@ describe("opérations git réelles", () => {
   test("crée une branche", async () => {
     const r = await gitBranch(local, "feat/test-branche")
     expect(r.name).toBe("feat/test-branche")
+  })
+})
+
+describe("erreurs git indépendantes de la locale", () => {
+  let tempL: string
+  let remoteL: string
+  let aL: string
+  let bL: string
+
+  async function shCapture(cwd: string, args: string[]) {
+    const p = Bun.spawn(["git", ...args], {
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+      stdin: "ignore",
+      env: { ...process.env, LC_ALL: "C", LANG: "C" },
+    })
+    const [code, stdout, stderr] = await Promise.all([
+      p.exited,
+      new Response(p.stdout).text(),
+      new Response(p.stderr).text(),
+    ])
+    return { code, stdout, stderr }
+  }
+
+  beforeAll(async () => {
+    tempL = mkdtempSync(path.join(tmpdir(), "ov2-locale-"))
+    remoteL = path.join(tempL, "remote.git")
+    aL = path.join(tempL, "a")
+    bL = path.join(tempL, "b")
+    await sh(tempL, ["init", "--bare", "--initial-branch=main", remoteL])
+    await sh(tempL, ["clone", remoteL, aL])
+    await sh(aL, ["config", "user.name", "Test"])
+    await sh(aL, ["config", "user.email", "test@local.invalid"])
+    writeFileSync(path.join(aL, "f.txt"), "base\n")
+    await sh(aL, ["add", "f.txt"])
+    await sh(aL, ["commit", "-m", "base"])
+    await sh(aL, ["push", "-u", "origin", "main"])
+    await sh(tempL, ["clone", remoteL, bL])
+    await sh(bL, ["config", "user.name", "Test"])
+    await sh(bL, ["config", "user.email", "test@local.invalid"])
+  })
+
+  afterAll(() => {
+    try {
+      rmSync(tempL, { recursive: true, force: true })
+    } catch {}
+  })
+
+  async function diverger() {
+    writeFileSync(path.join(aL, "f.txt"), "depuis a\n")
+    await sh(aL, ["add", "f.txt"])
+    await sh(aL, ["commit", "-m", "depuis a"])
+    await sh(aL, ["push"])
+    writeFileSync(path.join(bL, "f.txt"), "depuis b\n")
+    await sh(bL, ["add", "f.txt"])
+    await sh(bL, ["commit", "-m", "depuis b"])
+    await gitFetch(bL)
+  }
+
+  test("pull --ff-only sur branches divergentes donne NON_FAST_FORWARD", async () => {
+    await diverger()
+    await expect(gitPull(bL)).rejects.toMatchObject({ code: "NON_FAST_FORWARD" })
+  })
+
+  test("même code avec une locale française forcée dans l'environnement du test", async () => {
+    const avant = { LANG: process.env.LANG, LC_ALL: process.env.LC_ALL, LC_MESSAGES: process.env.LC_MESSAGES }
+    process.env.LANG = "fr_FR.UTF-8"
+    process.env.LC_ALL = "fr_FR.UTF-8"
+    process.env.LC_MESSAGES = "fr_FR.UTF-8"
+    try {
+      await expect(gitPull(bL)).rejects.toMatchObject({ code: "NON_FAST_FORWARD" })
+    } finally {
+      for (const [k, v] of Object.entries(avant)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+  })
+
+  test("un vrai conflit de fusion est classé CONFLIT", async () => {
+    // Dépôt dédié : une vraie fusion conflictuelle salit l'arbre, ce qui ferait
+    // échouer les tests suivants sur DEPOT_SALE. bL reste intact pour eux.
+    const cL = path.join(tempL, "c")
+    await sh(tempL, ["clone", remoteL, cL])
+    await sh(cL, ["config", "user.name", "Test"])
+    await sh(cL, ["config", "user.email", "test@local.invalid"])
+    // remoteL porte déjà "depuis a" : on revient à la base pour diverger depuis celle-ci.
+    await sh(cL, ["reset", "--hard", "HEAD~1"])
+    writeFileSync(path.join(cL, "f.txt"), "depuis c\n")
+    await sh(cL, ["add", "f.txt"])
+    await sh(cL, ["commit", "-m", "depuis c"])
+    const r = await shCapture(cL, ["merge", "origin/main"])
+    expect(r.code).not.toBe(0)
+    const sortie = `${r.stdout}\n${r.stderr}`.toLowerCase()
+    expect(sortie).toContain("conflict")
+    expect(classerErreur(sortie, r.code)).toBe("CONFLIT")
+    expect(existsSync(path.join(cL, ".git", "MERGE_HEAD"))).toBe(true)
+  })
+
+  test("le message d'erreur typé ne contient aucun chemin absolu", async () => {
+    try {
+      await gitPull(bL)
+      throw new Error("pull aurait dû échouer")
+    } catch (e) {
+      expect(e).toBeInstanceOf(GitError)
+      const err = e as GitError
+      expect(err.code).toBe("NON_FAST_FORWARD")
+      expect(err.message).not.toContain(tempL)
+      expect(err.message).not.toContain("/tmp/")
+    }
+  })
+
+  test("le dépôt n'est pas laissé en état de fusion après un pull ff-only refusé", async () => {
+    await expect(gitPull(bL)).rejects.toMatchObject({ code: "NON_FAST_FORWARD" })
+    expect(existsSync(path.join(bL, ".git", "MERGE_HEAD"))).toBe(false)
   })
 })

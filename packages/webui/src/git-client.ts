@@ -18,14 +18,31 @@ export type GitStatus = {
   dirty: boolean
 }
 
-export type GitEtat = "a-jour" | "en-avance" | "en-retard" | "conflit" | "hors-ligne"
+export type GitEtat = "a-jour" | "en-avance" | "en-retard" | "divergent" | "conflit" | "hors-ligne"
 
 export function etatDepot(statut: GitStatus | undefined, erreur: string | undefined): GitEtat {
   if (erreur === "CONFLIT") return "conflit"
+  if (erreur === "NON_FAST_FORWARD") return "divergent"
   if (!statut || erreur) return "hors-ligne"
   if (statut.behind > 0) return "en-retard"
   if (statut.ahead > 0) return "en-avance"
   return "a-jour"
+}
+
+/** Messages courts, actionnables, sans stdout git brut ni chemin local. */
+const LIBELLES: Record<string, string> = {
+  NON_FAST_FORWARD: "Branches divergentes : fusion manuelle nécessaire.",
+  CONFLIT: "Conflit de fusion : résolvez les fichiers.",
+  DEPOT_SALE: "Dépôt sale : commitez ou annulez vos modifications.",
+  PAS_DE_RESEAU: "Serveur distant injoignable.",
+  NON_AUTHENTIFIE: "Authentification expirée.",
+  HORS_PERIMETRE: "Chemin hors du dépôt.",
+  FICHIER_INTERDIT: "Fichier de secrets refusé.",
+  ARGUMENT_INVALIDE: "Argument invalide.",
+}
+
+export function libelleErreur(code: string): string {
+  return LIBELLES[code] ?? "Erreur Git."
 }
 
 export class ErreurGitApi extends Error {
