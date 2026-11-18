@@ -11,6 +11,7 @@
 import { existsSync } from "node:fs"
 import path from "node:path"
 import { LinkConfigError, loadLinkConfig, workspacePath } from "./link-config"
+import { ecrireGitToken, genererGitToken, GIT_TOKEN_ENV } from "../packages/opencode/src/opencodev2/token"
 
 const root = path.resolve(import.meta.dir, "..")
 const webui = path.join(root, "packages", "webui")
@@ -49,9 +50,17 @@ if (rebuild || !existsSync(path.join(dist, "index.html"))) {
 console.log(`[web] interface servie depuis ${dist}`)
 console.log(`[web] ouvre http://127.0.0.1:${port}`)
 
+// Jeton Git généré UNE fois par lancement, transmis au serveur : le fichier
+// local et le serveur partagent ainsi la même valeur, sans course entre
+// processus. Respecte un jeton déjà fourni explicitement.
+// Le lanceur est le SEUL auteur du jeton : il l'écrit sur le disque et
+// l'injecte au serveur. Serveur et daemon ne font que le lire.
+const gitTokenEnv = process.env[GIT_TOKEN_ENV] ?? genererGitToken()
+ecrireGitToken(gitTokenEnv)
+
 const server = Bun.spawn([bun, "--conditions=browser", entry, "serve", "--port", port], {
   stdio: ["inherit", "inherit", "inherit"],
-  env: { ...process.env, OPENCODE_WEB_UI_DIR: dist },
+  env: { ...process.env, OPENCODE_WEB_UI_DIR: dist, [GIT_TOKEN_ENV]: gitTokenEnv },
 })
 
 // Transmet l'interruption pour ne pas laisser de serveur orphelin.
