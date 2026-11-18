@@ -68,6 +68,45 @@ async function appeler<T>(chemin: string, corps?: unknown): Promise<T> {
   return donnees as T
 }
 
+export type ReglagesAuto = {
+  fetchAuDemarrage: boolean
+  commitAuto: boolean
+  pushAuto: boolean
+}
+
+export type EntreeJournal = {
+  id: string
+  action: "fetch" | "commit" | "push" | "annulation"
+  branche: string
+  session?: string
+  message?: string
+  sha?: string
+  date: string
+  statut: "ok" | "echec"
+  detail?: string
+}
+
+async function appelerAuto<T>(chemin: string, corps?: unknown): Promise<T> {
+  const jeton = lireJeton()
+  if (!jeton) throw new ErreurGitApi("NON_DISPONIBLE", "jeton local absent", 0)
+  let reponse: Response
+  try {
+    reponse = await fetch(`/opencodev2/auto/${chemin}`, {
+      method: corps === undefined ? "GET" : "POST",
+      headers: {
+        "x-opencodev2-token": jeton,
+        ...(corps === undefined ? {} : { "content-type": "application/json" }),
+      },
+      body: corps === undefined ? undefined : JSON.stringify(corps),
+    })
+  } catch {
+    throw new ErreurGitApi("PAS_DE_RESEAU", "serveur local injoignable", 0)
+  }
+  const donnees = (await reponse.json().catch(() => undefined)) as { code?: string; message?: string } | undefined
+  if (!reponse.ok) throw new ErreurGitApi(donnees?.code ?? "ECHEC_GIT", donnees?.message ?? `HTTP ${reponse.status}`, reponse.status)
+  return donnees as T
+}
+
 export const gitApi = {
   status: () => appeler<GitStatus>("status"),
   fetch: () => appeler<{ updated: boolean }>("fetch", {}),
@@ -75,6 +114,11 @@ export const gitApi = {
   commit: (message: string, files: string[]) => appeler<{ sha: string }>("commit", { message, files }),
   push: () => appeler<{ ok: boolean }>("push", {}),
   branch: (name: string) => appeler<{ name: string }>("branch", { name }),
+  reglagesAuto: () => appelerAuto<ReglagesAuto>("reglages"),
+  enregistrerReglagesAuto: (r: ReglagesAuto) => appelerAuto<ReglagesAuto>("reglages", r),
+  journal: () => appelerAuto<EntreeJournal[]>("journal"),
+  annuler: (id: string) => appelerAuto<EntreeJournal>("annuler", { id }),
+  apresAgent: (sessionID: string) => appelerAuto<EntreeJournal[]>("apres-agent", { sessionID }),
 }
 
 /** Date relative courte, sans dépendance. */

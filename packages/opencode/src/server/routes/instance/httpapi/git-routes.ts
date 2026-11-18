@@ -3,6 +3,13 @@
 import { Effect } from "effect"
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { GIT_TOKEN_HEADER, gitToken } from "@/opencodev2/token"
+import {
+  annulerLocal,
+  apresAgent,
+  ecrireReglagesAuto,
+  lireJournal,
+  lireReglagesAuto,
+} from "@/opencodev2/auto"
 import { lireWorkspace } from "@/opencodev2/config"
 import { GitError, gitBranch, gitCommit, gitFetch, gitPull, gitPush, gitStatus } from "@/opencodev2/git"
 
@@ -89,5 +96,34 @@ export const gitRoutes = HttpRouter.use((router) =>
     )
     yield* router.add("POST", "/opencodev2/git/push", route((r, c) => gitPush(r, brancheOptionnelle(c)), true))
     yield* router.add("POST", "/opencodev2/git/branch", route((r, c) => gitBranch(r, champTexte(c, "name")), true))
+
+    // Automatisme local — désactivé par défaut, réglages et journal hors Git.
+    yield* router.add("GET", "/opencodev2/auto/reglages", route(() => Promise.resolve(lireReglagesAuto()), false))
+    yield* router.add(
+      "POST",
+      "/opencodev2/auto/reglages",
+      route(
+        (r, c) =>
+          Promise.resolve(
+            ecrireReglagesAuto({
+              fetchAuDemarrage: (c as Record<string, unknown>).fetchAuDemarrage === true,
+              commitAuto: (c as Record<string, unknown>).commitAuto === true,
+              pushAuto: (c as Record<string, unknown>).pushAuto === true,
+            }),
+          ),
+        true,
+      ),
+    )
+    yield* router.add("GET", "/opencodev2/auto/journal", route(() => Promise.resolve(lireJournal()), false))
+    yield* router.add(
+      "POST",
+      "/opencodev2/auto/annuler",
+      route((r, c) => annulerLocal(r, champTexte(c, "id")), true),
+    )
+    yield* router.add(
+      "POST",
+      "/opencodev2/auto/apres-agent",
+      route((r, c) => apresAgent(r, champTexte(c, "sessionID")), true),
+    )
   }),
 )
