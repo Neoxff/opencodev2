@@ -1,0 +1,31 @@
+#!/bin/sh
+set -e
+
+# Release 3 — refus des fichiers de secrets avant toute analyse de contenu.
+# Le jeton local n'est jamais lu ni ecrit ici : seul gitleaks analyse le contenu.
+FICHIERS=$(git diff --cached --name-only --diff-filter=ACM)
+
+for f in $FICHIERS; do
+  # Les exemples versionnes (.env.example) sont autorises.
+  case "$f" in
+    *.env.example|*/.env.example) continue ;;
+  esac
+  case "$f" in
+    *auth.json|*.env|*.env.*|*credentials*|*.pem|*.key|*.p12|*.pfx|*.db|*.sqlite|*.sqlite3|*.git-credentials|*.npmrc|*.gitconfig|*/.ssh/*)
+      echo "[pre-commit] fichier de secrets refuse : $f" >&2
+      exit 1
+      ;;
+  esac
+done
+
+GITLEAKS="$HOME/.local/bin/gitleaks"
+if [ ! -x "$GITLEAKS" ]; then
+  echo "[pre-commit] gitleaks absent de ~/.local/bin — commit REFUSE." >&2
+  echo "[pre-commit] Installez gitleaks 8.30.1 avec : bash lancer-opencodev2.sh --install-gitleaks" >&2
+  echo "[pre-commit] ou copiez le binaire 8.30.1 (SHA-256 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb) dans ~/.local/bin/gitleaks" >&2
+  exit 1
+fi
+if ! "$GITLEAKS" protect --staged --redact --no-banner --gitleaks-ignore-path . ; then
+  echo "[pre-commit] gitleaks a detecte un secret (valeur masquee)." >&2
+  exit 1
+fi

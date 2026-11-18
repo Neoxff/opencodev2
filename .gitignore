@@ -67,3 +67,24 @@ cc_test_*.json
 /output.txt
 /response.txt
 packages/sdk/js/tmp-gen.ts
+
+# Release 3 - secrets et donnees locales (ne jamais versionner)
+.env.*
+!.env.example
+auth.json
+credentials*
+*.pem
+*.key
+*.p12
+*.pfx
+*.db
+*.sqlite
+*.sqlite3
+.artifacts/
+.git-credentials
+.npmrc
+.gitconfig
+.ssh/
+.opencode/data/
+.opencode/storage/
+.opencode/auth.json
