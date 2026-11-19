@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { render } from "solid-js/web"
 import { GitPanel } from "./git-panel"
-import { gitApi, type GitStatus } from "./git-client"
+import { ErreurGitApi, gitApi, type GitStatus } from "./git-client"
 
 vi.mock("./git-client", async (importOriginal) => {
   const original = (await importOriginal()) as Record<string, unknown>
@@ -113,6 +113,20 @@ describe("GitPanel", () => {
     const { container, dispose } = mount()
     await flush()
     expect(container.querySelector(".git-panel")?.getAttribute("data-etat")).toBe("hors-ligne")
+    dispose()
+  })
+
+  test("état divergent après un pull refusé, avec message court et action", async () => {
+    vi.mocked(gitApi.pull).mockRejectedValue(new ErreurGitApi("NON_FAST_FORWARD", "branches divergentes", 409))
+    const { container, dispose } = mount()
+    await flush()
+    const maj = container.querySelector('button[aria-label="Mettre à jour"]') as HTMLButtonElement
+    maj.click()
+    await flush()
+    expect(container.querySelector(".git-panel")?.getAttribute("data-etat")).toBe("divergent")
+    expect(container.textContent).toContain("Branches divergentes : fusion manuelle nécessaire.")
+    expect(container.querySelector('button[aria-label="Réessayer"]')).not.toBeNull()
+    expect(container.textContent).not.toContain("hint:")
     dispose()
   })
 })

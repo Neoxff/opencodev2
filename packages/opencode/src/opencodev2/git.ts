@@ -45,13 +45,24 @@ const SECRET_PATTERNS: RegExp[] = [
 
 const BRANCH_RE = /^[A-Za-z0-9][A-Za-z0-9/._-]*$/
 
-function classerErreur(stderr: string, code: number): GitErrorCode {
+/**
+ * Classe une erreur git à partir de ses messages ANGLAIS (voir `runGit` : LC_ALL=C).
+ * Aucune formulation localisée n'est acceptée : la locale est forcée avant chaque commande.
+ */
+export function classerErreur(stderr: string, code: number): GitErrorCode {
   const s = stderr.toLowerCase()
   if (/could not resolve host|failed to connect|timed? ?out|network is unreachable|temporarily unavailable/.test(s))
     return "PAS_DE_RESEAU"
   if (/authentication failed|permission denied|403|401|could not read username/.test(s)) return "NON_AUTHENTIFIE"
-  if (/non-fast-forward|rejected|fetch first|updates were rejected/.test(s)) return "NON_FAST_FORWARD"
-  if (/conflict|merge conflict/.test(s)) return "CONFLIT"
+  if (
+    /non-fast-forward|rejected|fetch first|updates were rejected|not possible to fast-forward|diverging branches|divergent branches/.test(
+      s,
+    )
+  )
+    return "NON_FAST_FORWARD"
+  // CONFLIT est réservé à une vraie fusion avec fichiers non fusionnés.
+  // Le message ff-only ("diverging branches") ne contient pas "conflict" : pas d'ambiguïté.
+  if (/conflict|automatic merge failed/.test(s)) return "CONFLIT"
   if (/local changes|would be overwritten|untracked working tree files/.test(s)) return "DEPOT_SALE"
   return code === 0 ? "ECHEC_GIT" : "ECHEC_GIT"
 }
@@ -88,11 +99,14 @@ export async function runGit(
     throw new GitError("ARGUMENT_INVALIDE", "arguments git invalides")
   }
   const timeoutMs = options.timeoutMs ?? 30_000
+  // Locale anglaise figée : classerErreur ne dépend d'aucune formulation localisée.
+  // GIT_TERMINAL_PROMPT=0 interdit toute invite interactive (auth bloquée, pas de hang).
   const proc = Bun.spawn(["git", ...args], {
     cwd: path.resolve(racine),
     stdout: "pipe",
     stderr: "pipe",
     stdin: "ignore",
+    env: { ...process.env, LC_ALL: "C", LANG: "C", GIT_TERMINAL_PROMPT: "0" },
   })
   let expire: ReturnType<typeof setTimeout> | undefined
   const limite = new Promise<never>((_, reject) => {

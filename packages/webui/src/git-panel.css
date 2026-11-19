@@ -25,6 +25,7 @@
 }
 .git-etat[data-etat="en-avance"] { color: var(--attention, var(--text-1)); }
 .git-etat[data-etat="en-retard"] { color: var(--danger, var(--text-2)); }
+.git-etat[data-etat="divergent"] { color: var(--attention, var(--text-1)); }
 .git-etat[data-etat="conflit"] { color: var(--danger, var(--text-2)); }
 .git-etat[data-etat="hors-ligne"] { color: var(--text-3); }
 
@@ -137,8 +138,19 @@
 }
 
 .git-erreur {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--danger, var(--text-2));
   font-size: var(--fs-meta);
+}
+.git-erreur-action {
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+  line-height: 1;
 }
 
 .git-fichiers {
