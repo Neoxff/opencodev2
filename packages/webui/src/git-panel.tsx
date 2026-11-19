@@ -12,8 +12,10 @@ import {
   ErreurGitApi,
   etatDepot,
   gitApi,
+  type EntreeJournal,
   type GitEtat,
   type GitStatus,
+  type ReglagesAuto,
 } from "./git-client"
 import "./git-panel.css"
 
@@ -33,6 +35,40 @@ export function GitPanel() {
   const [occupe, setOccupe] = createSignal<Action>()
   const [confirmation, setConfirmation] = createSignal<Action>()
   const [message, setMessage] = createSignal("")
+  const [reglages, setReglages] = createSignal<ReglagesAuto>()
+  const [journal, setJournal] = createSignal<EntreeJournal[]>([])
+  const [autoOuvert, setAutoOuvert] = createSignal(false)
+
+  const chargerAuto = async () => {
+    try {
+      const [r, j] = await Promise.all([gitApi.reglagesAuto(), gitApi.journal()])
+      setReglages(r)
+      setJournal(j)
+    } catch {
+      // L'API auto est facultative : on ne casse pas le panneau principal.
+    }
+  }
+
+  const basculerReglage = async (cle: keyof ReglagesAuto) => {
+    const r = reglages()
+    if (!r) return
+    const miseAJour = { ...r, [cle]: !r[cle] }
+    try {
+      setReglages(await gitApi.enregistrerReglagesAuto(miseAJour))
+      void chargerAuto()
+    } catch {
+      // On laisse l'état inchangé en cas d'échec.
+    }
+  }
+
+  const annulerAction = async (id: string) => {
+    try {
+      await gitApi.annuler(id)
+      await Promise.all([chargerAuto(), actualiser()])
+    } catch (e) {
+      setErreur(e instanceof ErreurGitApi ? e.code : "ERREUR")
+    }
+  }
 
   const etat = () => etatDepot(statut(), erreur())
 
@@ -200,6 +236,80 @@ export function GitPanel() {
           </>
         )}
       </Show>
+
+      {/* Automatisme local — désactivé par défaut, réglages et journal hors Git. */}
+      <div class="git-auto">
+        <button
+          class="git-auto-titre"
+          aria-expanded={autoOuvert()}
+          onClick={() => {
+            setAutoOuvert(!autoOuvert())
+            if (!autoOuvert()) void chargerAuto()
+          }}
+        >
+          Automatisme {autoOuvert() ? "▾" : "▸"}
+        </button>
+        <Show when={autoOuvert()}>
+          <Show when={reglages()}>
+            {(r) => (
+              <ul class="git-reglages">
+                <li>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={r().fetchAuDemarrage}
+                      onChange={() => void basculerReglage("fetchAuDemarrage")}
+                    />
+                    Récupérer au démarrage
+                  </label>
+                </li>
+                <li>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={r().commitAuto}
+                      onChange={() => void basculerReglage("commitAuto")}
+                    />
+                    Commit automatique (branche agent/)
+                  </label>
+                </li>
+                <li>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={r().pushAuto}
+                      onChange={() => void basculerReglage("pushAuto")}
+                    />
+                    Pousser la branche agent
+                  </label>
+                </li>
+              </ul>
+            )}
+          </Show>
+          <Show when={journal().length > 0}>
+            <ul class="git-journal">
+              <For each={journal().slice(0, 8)}>
+                {(e) => (
+                  <li data-statut={e.statut} title={e.detail ?? e.message ?? e.branche}>
+                    <span class="git-journal-action">{e.action}</span>
+                    <span class="git-journal-branche">{e.branche}</span>
+                    <span class="git-journal-date">{dateRelative(e.date)}</span>
+                    <Show when={e.statut === "ok" && e.action !== "fetch" && e.action !== "annulation"}>
+                      <button
+                        class="git-journal-annuler"
+                        title="Annuler (revert local)"
+                        onClick={() => void annulerAction(e.id)}
+                      >
+                        ↶
+                      </button>
+                    </Show>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </Show>
+        </Show>
+      </div>
     </section>
   )
 }

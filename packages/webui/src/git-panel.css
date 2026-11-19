@@ -157,3 +157,21 @@
 @media (prefers-reduced-motion: reduce) {
   .git-bouton { transition: none; }
 }
+
+/* Automatisme local — réglages et journal (désactivé par défaut). */
+.git-auto { border-top: 1px solid var(--line-1); padding-top: 8px; }
+.git-auto-titre {
+  background: transparent; border: 0; padding: 0; cursor: pointer;
+  color: var(--text-3); font-size: var(--fs-meta); text-align: left; width: 100%;
+}
+.git-reglages, .git-journal { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.git-reglages label { display: flex; gap: 8px; align-items: center; cursor: pointer; color: var(--text-2); }
+.git-journal li { display: flex; gap: 6px; align-items: baseline; min-width: 0; font-size: var(--fs-meta); }
+.git-journal li[data-statut="echec"] { color: var(--danger, var(--text-2)); }
+.git-journal-action { color: var(--text-1); }
+.git-journal-branche { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-journal-date { color: var(--text-3); margin-left: auto; }
+.git-journal-annuler {
+  border: 1px solid var(--line-2); background: transparent; color: var(--text-2);
+  cursor: pointer; border-radius: 4px; line-height: 1;
+}

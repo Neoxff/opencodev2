@@ -119,6 +119,7 @@ import { pluginEntries, type PluginList } from "./nav"
 import { SESSION_LIMIT, groupByWorkspace, sessionDetails, splitSessions, type ProjectRef, type SessionSummary, type WorkspaceGroup as WorkspaceGrouping } from "./sessions"
 import { subscribeEvents, type EventStreamState } from "./events"
 import { GitPanel } from "./git-panel"
+import { gitApi } from "./git-client"
 import {
   activityFromStatus,
   createReloadGate,
@@ -1810,7 +1811,15 @@ export default function App() {
         else if (outcome?.kind === "resync" && sessionID) reloadThread(sessionID)
         if (event.type === "session.status" || event.type === "session.idle") {
           const properties = (event.properties ?? {}) as { sessionID?: string; status?: { type?: string } }
-          if (properties.sessionID === active()) setWorking(properties.status?.type === "busy")
+          if (properties.sessionID === active()) {
+            const occupe = properties.status?.type === "busy"
+            // Fin d'une série de modifications : l'auto-commit/push est
+            // désactivé par défaut et vérifié côté serveur (aucune action sur main).
+            if (working() && !occupe && properties.sessionID) {
+              void gitApi.apresAgent(properties.sessionID).catch(() => undefined)
+            }
+            setWorking(occupe)
+          }
         }
       },
       onState: (state) => {

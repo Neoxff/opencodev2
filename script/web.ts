@@ -34,6 +34,15 @@ if (link) {
   console.log(`[web] dépôt lié : ${link.repo} (branche ${link.defaultBranch}, espace ${workspacePath(root, link)})`)
 }
 
+// Fetch silencieux au démarrage, uniquement si l'utilisateur l'a activé
+// (désactivé par défaut). Never bloque le lancement : tout échec est avalé.
+try {
+  const { autoFetchAuDemarrage } = await import("../packages/opencode/src/opencodev2/auto")
+  await autoFetchAuDemarrage(workspacePath(root, link ?? { repo: "local", defaultBranch: "main", port: 4096, workspace: "." }))
+} catch {
+  // silencieux par conception
+}
+
 const port = process.env.OPENCODE_SERVER_PORT ?? String(link?.port ?? 4096)
 const rebuild = process.argv.includes("--rebuild")
 const bun = process.execPath
