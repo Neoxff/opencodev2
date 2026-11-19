@@ -3,6 +3,7 @@
 Captures produites avec Playwright (Chromium 157) sur le vrai composant `GitPanel` du webui,
 avec une API simulée (`page.route` sur `/opencodev2/git/**` et `/opencodev2/auto/**`).
 Le jeton de la balise meta est une valeur factice ; aucun secret réel n'apparaît dans ces images.
+Note : le thème clair est une palette dérivée simulée, pas un thème implémenté.
 
 | Fichier | État affiché | `data-etat` observé | Thème | Taille |
 |---|---|---|---|---|
