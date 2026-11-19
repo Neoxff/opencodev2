@@ -1,0 +1,159 @@
+/* Panneau « Dépôt » — jetons repris de styles.css, aucun nouveau couple de couleurs. */
+
+.git-panel {
+  border-top: 1px solid var(--line-1);
+  padding: 10px 12px 12px;
+  display: grid;
+  gap: 8px;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+.git-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.git-titre {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.git-etat {
+  color: var(--text-3);
+}
+.git-etat[data-etat="en-avance"] { color: var(--attention, var(--text-1)); }
+.git-etat[data-etat="en-retard"] { color: var(--danger, var(--text-2)); }
+.git-etat[data-etat="conflit"] { color: var(--danger, var(--text-2)); }
+.git-etat[data-etat="hors-ligne"] { color: var(--text-3); }
+
+.git-vide {
+  color: var(--text-3);
+  font-style: italic;
+}
+
+.git-ligne {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.git-repo {
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-branche {
+  color: var(--text-3);
+  margin-left: auto;
+}
+
+.git-compteurs {
+  gap: 6px;
+}
+
+.git-pastille {
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  padding: 0 6px;
+  color: var(--text-2);
+}
+
+.git-modifies {
+  margin-left: auto;
+  color: var(--text-3);
+}
+
+.git-commit {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.git-commit-msg {
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-commit-date {
+  color: var(--text-3);
+}
+
+.git-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.git-bouton {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  background: var(--bg-2);
+  color: var(--text-1);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-base);
+  transition: transform 140ms ease;
+}
+.git-bouton:hover:not(:disabled) { transform: scale(1.06); }
+.git-bouton:active:not(:disabled) { transform: scale(0.97); }
+.git-bouton:disabled { opacity: 0.4; cursor: default; }
+.git-bouton.actif { border-color: var(--attention, var(--text-1)); }
+
+.git-confirm {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.git-message {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-2);
+  color: var(--text-1);
+  border: 1px solid var(--line-2);
+  padding: 4px 6px;
+}
+
+.git-confirm-texte {
+  flex: 1;
+  color: var(--text-1);
+}
+
+.git-annuler {
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.git-erreur {
+  color: var(--danger, var(--text-2));
+  font-size: var(--fs-meta);
+}
+
+.git-fichiers {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--text-3);
+  display: grid;
+  gap: 2px;
+}
+.git-fichiers li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .git-bouton { transition: none; }
+}

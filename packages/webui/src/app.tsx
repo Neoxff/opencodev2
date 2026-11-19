@@ -118,6 +118,7 @@ import { injectionPhase, parseInjections, relativeTo } from "./injections"
 import { pluginEntries, type PluginList } from "./nav"
 import { SESSION_LIMIT, groupByWorkspace, sessionDetails, splitSessions, type ProjectRef, type SessionSummary, type WorkspaceGroup as WorkspaceGrouping } from "./sessions"
 import { subscribeEvents, type EventStreamState } from "./events"
+import { GitPanel } from "./git-panel"
 import {
   activityFromStatus,
   createReloadGate,
@@ -2399,6 +2400,9 @@ export default function App() {
               }}
           </For>
           </div>
+
+          {/* Panneau « Dépôt » — état Git du dépôt lié et actions sûres. */}
+          <GitPanel />
         </div>
 
         {/* 4 — Le pied : les **deux accès**, et rien d'autre.

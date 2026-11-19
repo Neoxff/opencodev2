@@ -58,7 +58,7 @@ describe("sécurité des chemins et de la liste noire", () => {
     expect(() => cheminSansRisque(local, "../hors")).toThrow(GitError)
   })
   test("accepte un chemin relatif dans le dépôt", () => {
-    expect(cheminSansRisque(local, "src/fichier.ts")).toBe("src/fichier.ts")
+    expect(cheminSansRisque(local, "src/fichier.ts")).toBe(path.join("src", "fichier.ts"))
   })
   test("refuse les fichiers de secrets", () => {
     for (const f of ["auth.json", ".env", ".env.local", "clé.pem", "data.sqlite", "credentials", "token", "secrets/x"]) {
