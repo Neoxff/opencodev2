@@ -74,6 +74,31 @@ export function GitPanel() {
 
   const etat = () => etatDepot(statut(), erreur())
 
+  /**
+   * Erreur affichable dans son propre bloc. `NON_DISPONIBLE` est écarté : il a déjà son
+   * libellé court (« Jeton local absent »), inutile de lui ajouter une action.
+   */
+  const erreurVisible = () => {
+    const e = erreur()
+    return e && e !== "NON_DISPONIBLE" ? e : undefined
+  }
+
+  /** Message d'erreur + action « Réessayer » — une seule source, deux emplacements possibles. */
+  const blocErreur = (code: string | undefined) =>
+    code === undefined ? null : (
+      <div class="git-erreur" role="alert">
+        <span class="git-erreur-message">{libelleErreur(code)}</span>
+        <button
+          class="git-erreur-action"
+          title="Réessayer (actualiser l'état)"
+          aria-label="Réessayer"
+          onClick={() => void actualiser()}
+        >
+          ↻
+        </button>
+      </div>
+    )
+
   const actualiser = async () => {
     try {
       const s = await gitApi.status()
@@ -124,9 +149,13 @@ export function GitPanel() {
       <Show
         when={statut()}
         fallback={
-          <div class="git-vide">
-            {erreur() === "NON_DISPONIBLE" ? "Jeton local absent" : "Chargement du dépôt…"}
-          </div>
+          erreurVisible() ? (
+            blocErreur(erreurVisible())
+          ) : (
+            <div class="git-vide">
+              {erreur() === "NON_DISPONIBLE" ? "Jeton local absent" : "Chargement du dépôt…"}
+            </div>
+          )
         }
       >
         {(s) => (
@@ -226,21 +255,7 @@ export function GitPanel() {
               </div>
             </Show>
 
-            <Show when={erreur()}>
-              {(e) => (
-                <div class="git-erreur" role="alert">
-                  <span class="git-erreur-message">{libelleErreur(e())}</span>
-                  <button
-                    class="git-erreur-action"
-                    title="Réessayer (actualiser l'état)"
-                    aria-label="Réessayer"
-                    onClick={() => void actualiser()}
-                  >
-                    ↻
-                  </button>
-                </div>
-              )}
-            </Show>
+            <Show when={erreurVisible()}>{(e) => blocErreur(e())}</Show>
 
             <Show when={s().modified.length > 0}>
               <ul class="git-fichiers">
