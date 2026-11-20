@@ -2142,7 +2142,7 @@ export default function App() {
 
   return (
     <div class="layout" style={layoutStyle()}>
-      <aside class="rail">
+      <aside class="rail glass-rail">
         <div class="grip" onPointerDown={startSidebarDrag} />
 
         {/* Le nom du produit. Le nom est en discussion — « opencodev2 » évoque un agent de codage,
@@ -2331,7 +2331,7 @@ export default function App() {
                                   </button>
                                 }
                               >
-                                <span class="row-menu">
+                                <span                                     class="row-menu glass-menu">
                                   <button
                                     class="row-menu-item"
                                     onClick={(event) => {
@@ -2545,7 +2545,7 @@ export default function App() {
             <TodoList todos={todos()} />
           </Show>
 
-          <form class="composer" onSubmit={send}>
+          <form class="composer glass-composer" onSubmit={send}>
             <div class="composer-inner">
               <Show when={attachments().length > 0}>
                 <ul class="pending">
