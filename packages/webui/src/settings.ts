@@ -656,6 +656,13 @@ export const GENERAL_SETTINGS: SettingSpec[] = [
     source: "shells",
     placeholder: "system default",
   },
+  {
+    key: "accueil",
+    group: "Defaults",
+    label: "Welcome screen",
+    desc: "animated \"Opencodev2\" title on first load",
+    kind: "toggle",
+  },
 ]
 
 /**

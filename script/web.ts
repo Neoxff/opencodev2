@@ -56,6 +56,20 @@ if (rebuild || !existsSync(path.join(dist, "index.html"))) {
   }
 }
 
+console.log("")
+console.log("  ███╗   ███╗ █████╗  ██████╗ ██╗   ██╗██████╗  █████╗ ███╗   ██╗███████╗")
+console.log("  ████╗ ████║██╔══██╗██╔════╝ ██║   ██║██╔══██╗██╔══██╗████╗  ██║██╔════╝")
+console.log("  ██╔████╔██║███████║██║  ███╗██║   ██║██████╔╝███████║██╔██╗ ██║█████╗  ")
+console.log("  ██║╚██╔╝██║██╔══██║██║   ██║██║   ██║██╔═══╝ ██╔══██║██║╚██╗██║██╔══╝  ")
+console.log("  ██║ ╚═╝ ██║██║  ██║╚██████╔╝╚██████╔╝██║     ██║  ██║██║ ╚████║███████╗")
+console.log("  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝")
+console.log("")
+console.log(`       Opencodev2 — harnais web local d'agent de code`)
+console.log(`       URL    : http://127.0.0.1:${port}`)
+if (link) {
+  console.log(`       Dépôt  : ${link.repo} (branche ${link.defaultBranch})`)
+}
+console.log("")
 console.log(`[web] interface servie depuis ${dist}`)
 console.log(`[web] ouvre http://127.0.0.1:${port}`)
 

@@ -1,0 +1,128 @@
+/* =============================================================================
+   Écran d'accueil — docs/design/23-depot-accueil.md §1
+   Couche superposée, jamais bloquante, animée lettre par lettre.
+   ============================================================================= */
+
+.accueil-couche {
+  position: fixed;
+  inset: 0;
+  z-index: 50; /* au-dessus de l'interface, sous rien d'autre */
+  display: grid;
+  place-items: center;
+  background: var(--bg-0);
+  opacity: 1;
+  transition: opacity var(--duree-lent) var(--courbe-sortie-douce);
+}
+
+/* L'écran s'efface : l'interface apparaît dessous */
+.accueil-couche.fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.accueil {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  min-height: 100vh;
+  width: 100vw;
+}
+
+/* Ciel : dégradé de nuit + étoiles */
+.accueil-ciel {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, #05070f 0%, #0b0a1f 100%);
+  z-index: 0;
+}
+
+.accueil-etoile {
+  position: absolute;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 4px #ffffff;
+  opacity: 0.9;
+  animation: scintillement 4s ease-in-out infinite;
+}
+
+@keyframes scintillement {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 0.4; }
+}
+
+/* Titre « Opencodev2 » — lettre par lettre */
+.accueil-titre {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  font-family: "Space Grotesk", "Inter", system-ui, -apple-system, sans-serif;
+  font-weight: 700;
+  font-size: clamp(2rem, 8vw, 4rem);
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  color: var(--text-1);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.accueil-curseur {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--accent-fort);
+  margin-left: 2px;
+  animation: curseur 1s step-end infinite;
+}
+
+@keyframes curseur {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.accueil-curseur {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--accent-fort);
+  margin-left: 2px;
+  animation: curseur 1s step-end infinite;
+}
+
+@keyframes curseur {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.accueil-aide {
+  position: absolute;
+  bottom: 12vh;
+  z-index: 1;
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+  letter-spacing: 0.04em;
+  opacity: 0.8;
+}
+
+.accueil-couche.fade-out .accueil-aide {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .accueil-couche {
+    opacity: 1;
+    transition: none;
+  }
+  .accueil-titre {
+    overflow: visible;
+    white-space: normal;
+  }
+  .accueil-curseur {
+    display: none;
+  }
+  .accueil-etoile {
+    animation: none;
+    opacity: 0.6;
+  }
+}
