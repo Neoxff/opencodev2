@@ -1,0 +1,66 @@
+/* =============================================================================
+   Jeton — système de design Opencodev2
+   Source de vérité : docs/design/19-tokens.md
+   Thème sombre uniquement. Aucune couleur nouvelle : tout provient de
+   l'échelle `bluish` déjà déclarée dans styles.css ou de valeurs monochromes
+   déjà présentes. Chaque valeur ci-dessous correspond exactement à une valeur
+   déjà utilisée, afin que le remplacement soit à rendement nul.
+   ============================================================================= */
+
+:root {
+  /* Surfaces — 4 niveaux (famille bluish existante, pas de couleur nouvelle) */
+  --surface-0: #151517; /* bluish-950 — fond de l'application, arrière-plan du ciel */
+  --surface-1: #232324; /* bluish-875 — barre latérale, panneaux latéraux */
+  --surface-2: #2c2c2e; /* bluish-850 — feuilles, tiroir, verre (teinte de base) */
+  --surface-3: #353638; /* bluish-800 — survol actif, verre, sélecteurs */
+
+  /* Texte — 3 niveaux */
+  --text-1: #f9fafb; /* bluish-50 — contenu principal, titres, saisie */
+  --text-2: #adb2b8; /* bluish-400 — libellés, métadonnées, texte secondaire */
+  --text-3: #8c9697; /* bluish-650 — note, hint, texte désactivé */
+
+  /* Accent — monochrome conservé (pas de couleur nouvelle) */
+  --accent: #f9fafb;
+  --accent-fort: #ffffff;
+  --accent-doux: #ffffff14;
+
+  /* États */
+  --danger: #f25a5a;
+  --danger-texte: #ff8080;
+  --attention: #f7ad31;
+  --success: #4cc38a;
+  --success-doux: #3fb9501f;
+
+  /* Rayons — panneaux à 0 (règle de styles.css:17), échelle pour commandes */
+  --radius-0: 0;
+  --radius-4: 4px;
+  --radius-6: 6px;
+  --radius-8: 8px;
+  --radius-10: 10px;
+  --radius-12: 12px;
+  --radius-16: 16px;
+  --radius-20: 20px;
+  --radius-28: 28px;
+  --radius-full: 9999px;
+
+  /* Espacements — échelle de 4 px */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Ombres — une seule ombre douce, deux profondeurs */
+  --shadow-1: 0 1px 2px #0000001a;
+  --shadow-2: 0 8px 24px #00000033;
+  --shadow-3: 0 16px 48px #0000004d;
+
+  /* Verre — opacités (consommées par docs/design/22-verre-sobre-web.md) */
+  --glass-opaque: 0.80;
+  --glass-moyen: 0.65;
+  --glass-legger: 0.55;
+  --glass-blur: 16px;
+  --glass-blur-fort: 20px;
+}
