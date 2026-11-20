@@ -125,7 +125,23 @@ export function GitPanel() {
         when={statut()}
         fallback={
           <div class="git-vide">
-            {erreur() === "NON_DISPONIBLE" ? "Jeton local absent" : "Chargement du dépôt…"}
+            {erreur() === "NON_DISPONIBLE"
+              ? "Jeton local absent"
+              : erreur()
+                ? (
+                  <div class="git-erreur" role="alert">
+                    <span class="git-erreur-message">{libelleErreur(erreur()!)}</span>
+                    <button
+                      class="git-erreur-action"
+                      title="Réessayer (actualiser l'état)"
+                      aria-label="Réessayer"
+                      onClick={() => void actualiser()}
+                    >
+                      ↻
+                    </button>
+                  </div>
+                )
+                : "Chargement du dépôt…"}
           </div>
         }
       >
