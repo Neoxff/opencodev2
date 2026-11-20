@@ -113,7 +113,7 @@ export function GitPanel() {
   })
 
   return (
-    <section class="git-panel" data-etat={etat()} aria-label="Dépôt Git lié">
+    <section class="git-panel glass-depot" data-etat={etat()} aria-label="Dépôt Git lié">
       <div class="git-head">
         <span class="git-titre">Dépôt</span>
         <span class="git-etat" data-etat={etat()}>

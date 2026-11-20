@@ -41,7 +41,7 @@ export function SettingsSheet(props: {
   return (
     <>
       <div class="sheet-scrim" onClick={() => props.onClose()} />
-      <aside class="sheet settings" role="dialog" aria-label="settings">
+      <aside class="sheet settings glass-sheet" role="dialog" aria-label="settings">
         <header class="sheet-head">
           <span class="sheet-title">settings</span>
           <button class="ghost" title="Close (Esc)" onClick={() => props.onClose()}>
