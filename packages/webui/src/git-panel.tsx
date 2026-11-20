@@ -6,7 +6,16 @@
  * icône + info-bulle (`title`) seulement, comme demandé.
  */
 
-import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import {
+  createEffect,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+  type JSX,
+} from "solid-js"
+import { DUREE, avecWillChange } from "./motion"
 import {
   dateRelative,
   ErreurGitApi,
@@ -113,7 +122,7 @@ export function GitPanel() {
   })
 
   return (
-    <section class="git-panel" data-etat={etat()} aria-label="Dépôt Git lié">
+    <section class="git-panel glass-depot" data-etat={etat()} aria-label="Dépôt Git lié">
       <div class="git-head">
         <span class="git-titre">Dépôt</span>
         <span class="git-etat" data-etat={etat()}>
@@ -125,7 +134,11 @@ export function GitPanel() {
         when={statut()}
         fallback={
           <div class="git-vide">
-            {erreur() === "NON_DISPONIBLE" ? "Jeton local absent" : "Chargement du dépôt…"}
+            {erreur() === "NON_DISPONIBLE"
+              ? "Jeton local absent"
+              : erreur()
+                ? libelleErreur(erreur()!)
+                : "Chargement du dépôt…"}
           </div>
         }
       >
@@ -154,29 +167,27 @@ export function GitPanel() {
             </Show>
 
             <div class="git-actions">
-              <button
-                class="git-bouton"
-                title="Récupérer (fetch)"
-                aria-label="Récupérer"
+              <BoutonGit
+                action="fetch"
+                label="Récupérer (fetch)"
+                aria="Récupérer"
+                icone={IconeRecuperer}
                 disabled={Boolean(occupe())}
                 onClick={() => void ranimer("fetch", () => gitApi.fetch())}
-              >
-                ⇩
-              </button>
-              <button
-                class="git-bouton"
-                title="Mettre à jour (pull fast-forward)"
-                aria-label="Mettre à jour"
+              />
+              <BoutonGit
+                action="pull"
+                label="Mettre à jour (pull fast-forward)"
+                aria="Mettre à jour"
+                icone={IconeMettreAJour}
                 disabled={Boolean(occupe()) || s().behind === 0}
                 onClick={() => void ranimer("pull", () => gitApi.pull())}
-              >
-                ⟳
-              </button>
-              <button
-                class="git-bouton"
-                classList={{ actif: confirmation() === "commit" }}
-                title={confirmation() === "commit" ? "Confirmer le commit" : "Committer les fichiers modifiés"}
-                aria-label="Commit"
+              />
+              <BoutonGit
+                action="commit"
+                label={confirmation() === "commit" ? "Confirmer le commit" : "Committer les fichiers modifiés"}
+                aria="Commit"
+                icone={IconeCommit}
                 disabled={Boolean(occupe()) || confirmation() === "push"}
                 onClick={() => {
                   if (confirmation() === "commit") {
@@ -187,22 +198,18 @@ export function GitPanel() {
                     setConfirmation("commit")
                   }
                 }}
-              >
-                ✓
-              </button>
-              <button
-                class="git-bouton"
-                classList={{ actif: confirmation() === "push" }}
-                title={confirmation() === "push" ? "Confirmer le push (jamais de force)" : "Pousser (jamais de force)"}
-                aria-label="Pousser"
+              />
+              <BoutonGit
+                action="push"
+                label={confirmation() === "push" ? "Confirmer le push (jamais de force)" : "Pousser (jamais de force)"}
+                aria="Pousser"
+                icone={IconePousser}
                 disabled={Boolean(occupe()) || confirmation() === "commit"}
                 onClick={() => {
                   if (confirmation() === "push") void ranimer("push", () => gitApi.push())
                   else setConfirmation("push")
                 }}
-              >
-                ⇧
-              </button>
+              />
             </div>
 
             <Show when={confirmation() === "commit"}>
@@ -327,3 +334,108 @@ export function GitPanel() {
     </section>
   )
 }
+
+/** Bouton d'action du panneau Dépôt : icône vecteur 20px, trait 1.75px, pas de libellé écrit.
+ *  Utilise le moteur de mouvement (avecWillChange) pour l'activation visuelle. */
+function BoutonGit(props: {
+  action: string
+  label: string
+  aria: string
+  icone: JSX.Element | Element
+  disabled?: boolean
+  onClick: () => void
+}) {
+  const [etatBouton, setEtatBouton] = createSignal<"idle" | "actif">("idle")
+
+  const gererClique = async () => {
+    setEtatBouton("actif")
+    await avecWillChange(
+      document.activeElement as HTMLElement,
+      "transform",
+      () => {
+        props.onClick()
+      },
+    )
+    setTimeout(() => setEtatBouton("idle"), DUREE.instantane)
+  }
+
+  return (
+    <button
+      class={`git-bouton ${etatBouton() === "actif" ? "git-bouton-actif" : ""}`}
+      title={props.label}
+      aria-label={props.aria}
+      disabled={props.disabled}
+      onClick={() => void gererClique()}
+    >
+      {props.icone}
+    </button>
+  )
+}
+
+/** Icône « Récupérer » (flèche vers le bas) — vecteur 20px, trait 1.75px. */
+const IconeRecuperer = (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M10 3 v14 M10 17 l-4 -4 M10 17 l4 -4" />
+  </svg>
+)
+
+/** Icône « Mettre à jour » (flèche circulaire) — vecteur 20px, trait 1.75px. */
+const IconeMettreAJour = (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M12 3 a9 9 0 0 1 9 9 v4 M16 7 l4 -4 M16 7 l-4 -4" />
+  </svg>
+)
+
+/** Icône « Commit » (case à cocher cochée) — vecteur 20px, trait 1.75px. */
+const IconeCommit = (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+)
+
+/** Icône « Pousser » (flèche vers le haut) — vecteur 20px, trait 1.75px. */
+const IconePousser = (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M10 17 v-14 M10 3 l-4 4 M10 3 l4 4" />
+  </svg>
+)
