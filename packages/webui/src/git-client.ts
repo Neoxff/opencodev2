@@ -24,6 +24,7 @@ export function etatDepot(statut: GitStatus | undefined, erreur: string | undefi
   if (erreur === "CONFLIT") return "conflit"
   if (erreur === "NON_FAST_FORWARD") return "divergent"
   if (!statut || erreur) return "hors-ligne"
+  if (statut.ahead > 0 && statut.behind > 0) return "divergent"
   if (statut.behind > 0) return "en-retard"
   if (statut.ahead > 0) return "en-avance"
   return "a-jour"
