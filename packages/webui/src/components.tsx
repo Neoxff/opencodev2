@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import {
   answersComplete,
   boundLines,
@@ -47,6 +47,7 @@ import { formatChars, injectionLabel, share, sourceLabel, type Injections } from
 import { CheckIcon, ChevronIcon, CopyIcon, CrossIcon, FolderIcon, PlusIcon, ThinkIcon, ToolIcon, toolHint } from "./icons"
 import { toolIcon } from "./tool-icons"
 import { relativeTime } from "./time"
+import { delaiEchelonnageEffectif } from "./motion"
 
 export const REPLY_LABEL: Record<PermissionReply, string> = {
   once: "Allow once",
@@ -249,8 +250,24 @@ export function SessionRow(props: {
 }
 
 /** Un tour de conversation. Le rôle porte la classe : `user` ou `agent`. */
-export function Turn(props: { role: string; children?: unknown }) {
-  return <div class={`turn ${props.role === "user" ? "user" : "agent"}`}>{props.children as never}</div>
+export function Turn(props: { role: string; children?: unknown; index?: number }) {
+  const index = props.index ?? -1
+  const [entrant, setEntrant] = createSignal(true)
+  onMount(() => {
+    if (index < 0) {
+      setEntrant(false)
+      return
+    }
+    setTimeout(() => setEntrant(false), delaiEchelonnageEffectif(index))
+  })
+
+  return (
+    <div
+      class={`turn ${props.role === "user" ? "user" : "agent"} ${entrant() ? "turn-entrant" : ""}`}
+    >
+      {props.children as never}
+    </div>
+  )
 }
 
 /**
