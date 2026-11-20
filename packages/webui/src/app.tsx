@@ -42,6 +42,8 @@ import {
   UserPrompt,
   WorkspaceGroup,
 } from "./components"
+import { type ModeCiel } from "./ciel-moteur"
+import CielEtoile from "./CielEtoile"
 import {
   AgentsSection,
   GeneralSection,
@@ -2140,8 +2142,16 @@ export default function App() {
     return undefined
   }
 
+  const modeCiel = (): ModeCiel => {
+    const valeur = (config() as Record<string, string>)["ciel"] ?? "activé"
+    return valeur as ModeCiel
+  }
+
   return (
     <div class="layout" style={layoutStyle()}>
+      {/* Le ciel étoilé est derrière toute l'interface : il ne bloque aucun clic. */}
+      <CielEtoile mode={modeCiel()} />
+
       <aside class="rail">
         <div class="grip" onPointerDown={startSidebarDrag} />
 

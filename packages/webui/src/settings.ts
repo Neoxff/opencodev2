@@ -656,6 +656,20 @@ export const GENERAL_SETTINGS: SettingSpec[] = [
     source: "shells",
     placeholder: "system default",
   },
+  {
+    key: "ciel",
+    group: "Defaults",
+    label: "Sky",
+    desc: "starry sky behind the interface",
+    kind: "select",
+    options: [
+      { value: "actif", label: "enabled" },
+      { value: "reduit", label: "reduced" },
+      { value: "statique", label: "static" },
+      { value: "desactive", label: "disabled" },
+    ],
+    placeholder: "enabled",
+  },
 ]
 
 /**

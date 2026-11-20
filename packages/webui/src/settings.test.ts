@@ -300,6 +300,7 @@ describe("réglages déclarés", () => {
       "snapshot",
       "formatter",
       "lsp",
+      "ciel",
     ]
     for (const specs of Object.values(SETTING_SPECS)) {
       for (const spec of specs ?? []) expect(CONFIG_KEYS).toContain(spec.key)
