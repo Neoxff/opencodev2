@@ -2073,10 +2073,10 @@ export default function App() {
     </div>
   )
 
-  const renderTurn = (turn: TurnView) => (
+  const renderTurn = (turn: TurnView, index: number = -1) => (
     <>
       <Show when={turn.prompt.length > 0}>
-        <Turn role="user">
+        <Turn role="user" index={index}>
           <For each={turn.prompt}>{(part) => renderPrompt(part)}</For>
           {/*
             Ce qui **travaille** le dit : une ligne d'attente, avec le spinner, à la place de la ligne
@@ -2103,7 +2103,7 @@ export default function App() {
         </Turn>
       </Show>
       <Show when={turn.steps.length > 0 || turnError(turn)}>
-        <Turn role="assistant">
+        <Turn role="assistant" index={index}>
           {/* Le **flux**, dans l'ordre des faits : la prose au corps de lecture, le travail en une
               ligne chacune, sans repli. Un repli qui cache tout ne montrait plus rien (§9.2 révisé) ;
               le détail reste accessible en dépliant **l'entrée elle-même**. */}
@@ -2507,7 +2507,7 @@ export default function App() {
               <Show when={error()}>
                 <p class="error">{error()}</p>
               </Show>
-              <For each={turns()}>{(turn) => renderTurn(turn)}</For>
+              <For each={turns()}>{(turn, index) => renderTurn(turn, index())}</For>
 
               {/* La seule écriture du fil : l'agent est bloqué tant qu'il n'a pas sa réponse. */}
               <Show when={activeQuestion()}>

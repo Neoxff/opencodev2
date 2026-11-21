@@ -92,6 +92,14 @@
   --gutter: 24px;
   --measure: 780px;
   --radius: 10px;
+
+  /* Mouvement — docs/design/21-animations.md */
+  --duree-instantane: 90ms;
+  --duree-rapide: 160ms;
+  --duree-normal: 240ms;
+  --duree-lent: 380ms;
+  --courbe-sortie-douce: cubic-bezier(0.22, 1, 0.36, 1);
+  --courbe-entree-sortie: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * {
@@ -119,6 +127,11 @@ button {
   border: 0;
   padding: 0;
   cursor: pointer;
+  transition: transform var(--duree-instantane) var(--courbe-sortie-douce);
+}
+
+button:active {
+  transform: scale(0.97);
 }
 
 input,
@@ -1802,6 +1815,16 @@ textarea {
   margin-bottom: -16px;
 }
 
+/* Nouvel élément du flux : transform + opacity uniquement, échelonné par index dans app.tsx. */
+.turn.turn-entrant {
+  opacity: 0;
+  transform: translateY(6px);
+  will-change: transform, opacity;
+  transition:
+    transform var(--duree-normal) var(--courbe-sortie-douce),
+    opacity var(--duree-normal) var(--courbe-sortie-douce);
+}
+
 .part {
   margin: 0;
 }
@@ -2871,9 +2894,16 @@ textarea {
 .side {
   overflow: hidden;
   background: var(--bg-1);
+  transform: translateX(100%);
+  opacity: 0;
+  transition:
+    transform var(--duree-normal) var(--courbe-entree-sortie),
+    opacity var(--duree-normal) var(--courbe-entree-sortie);
 }
 
 .side.open {
+  transform: translateX(0);
+  opacity: 1;
   border-left: 1px solid var(--line-1);
 }
 
@@ -4998,5 +5028,19 @@ textarea {
      vide. */
   .spinner::before {
     content: "⋯";
+  }
+
+  /* Moteur de mouvement : pas de transition sous `prefers-reduced-motion`.
+     Les états (ouvert/fermé, actif) restent respectés, ils changent juste sans animation. */
+  .side {
+    transition: none;
+  }
+  .turn-entrant {
+    transition: none;
+    opacity: 1;
+    transform: none;
+  }
+  button:active {
+    transform: none;
   }
 }
