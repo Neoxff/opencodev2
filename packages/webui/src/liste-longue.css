@@ -1,0 +1,43 @@
+/* Listes longues virtualisées — isolation de rendu, aucun nouveau couple de couleurs. */
+
+.liste-longue {
+  contain: layout paint;
+  overflow-y: auto;
+}
+
+.liste-longue-haut,
+.liste-longue-bas {
+  pointer-events: none;
+}
+
+/* Les conteneurs de listes déjà présents sont isolés du reste de la page :
+   une mise à jour n'invalide ni le layout ni la peinture environnante. */
+.log-list,
+.rows,
+.git-fichiers,
+.git-journal,
+/* Selecteur reel du panneau Ressources (branche feat/ressources-ui, PR #17 non
+   fusionnee sur main) : la regle s'applique des que ce panneau est present. */
+.ressources-processus {
+  contain: layout paint;
+}
+
+/* Compteur FPS — discret, sans cout au repos (aucune image demandee). */
+.compteur-fps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+.compteur-fps-bouton {
+  background: transparent;
+  border: 1px solid var(--line-2);
+  color: var(--text-3);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: var(--fs-meta);
+  padding: 2px 8px;
+}
+.compteur-fps-bouton:hover { color: var(--text-1); }
+.compteur-fps-valeur { font-variant-numeric: tabular-nums; }
