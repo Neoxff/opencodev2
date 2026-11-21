@@ -119,6 +119,7 @@ import { pluginEntries, type PluginList } from "./nav"
 import { SESSION_LIMIT, groupByWorkspace, sessionDetails, splitSessions, type ProjectRef, type SessionSummary, type WorkspaceGroup as WorkspaceGrouping } from "./sessions"
 import { subscribeEvents, type EventStreamState } from "./events"
 import { GitPanel } from "./git-panel"
+import RessourcesPanel from "./ressources-panel"
 import { gitApi } from "./git-client"
 import {
   activityFromStatus,
@@ -2412,6 +2413,9 @@ export default function App() {
 
           {/* Panneau « Dépôt » — état Git du dépôt lié et actions sûres. */}
           <GitPanel />
+
+          {/* Panneau « Ressources » — santé machine compacte (mémoire, démon, évaluations). */}
+          <RessourcesPanel compact />
         </div>
 
         {/* 4 — Le pied : les **deux accès**, et rien d'autre.
