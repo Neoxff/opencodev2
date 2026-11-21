@@ -73,6 +73,40 @@ echo "[lanceur] bun install"
 bun install
 
 # ---------------------------------------------------------------------------
+# 4b. gitleaks 8.30.1 — installé avec vérification SHA-256
+#     SHA du tarball officiel gitleaks_8.30.1_linux_x64.tar.gz, déjà consigné
+#     dans l'historique du dépôt (commit f132adadd) et confirmé par la release.
+# ---------------------------------------------------------------------------
+GITLEAKS_VERSION="8.30.1"
+GITLEAKS_SHA="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+GITLEAKS_BIN="${HOME}/.local/bin/gitleaks"
+GITLEAKS_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+
+installer_gitleaks() {
+  local tmp archive
+  tmp="$(mktemp -d)"
+  archive="${tmp}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+  echo "[lanceur] téléchargement de gitleaks ${GITLEAKS_VERSION}"
+  curl -fsSL -o "$archive" "$GITLEAKS_URL"
+  echo "${GITLEAKS_SHA}  ${archive}" | sha256sum -c - || {
+    echo "[lanceur] SHA-256 invalide : installation refusée." >&2
+    rm -rf "$tmp"
+    return 1
+  }
+  mkdir -p "$(dirname "$GITLEAKS_BIN")"
+  tar -xzf "$archive" -C "$tmp" gitleaks
+  install -m 0755 "${tmp}/gitleaks" "$GITLEAKS_BIN"
+  rm -rf "$tmp"
+  echo "[lanceur] gitleaks ${GITLEAKS_VERSION} installé (SHA-256 vérifié)."
+}
+
+if [[ -x "$GITLEAKS_BIN" ]] && "$GITLEAKS_BIN" version 2>/dev/null | grep -q "$GITLEAKS_VERSION"; then
+  echo "[lanceur] gitleaks $($GITLEAKS_BIN version 2>/dev/null | head -1) déjà présent."
+else
+  installer_gitleaks
+fi
+
+# ---------------------------------------------------------------------------
 # 5. Garde-fou : aucun démon démarré par défaut
 # ---------------------------------------------------------------------------
 export OPENCODE_NO_DAEMON_AUTOSTART=1
