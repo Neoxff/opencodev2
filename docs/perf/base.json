@@ -1,16 +1,16 @@
 {
   "version": 1,
   "machine": {
-    "date": "2026-11-17T23:47:32.054Z",
+    "date": "2026-11-21T11:20:44.422Z",
     "systeme": "linux",
-    "noyau": "7.3.4-arch1-1",
+    "noyau": "7.3.5-arch1-1",
     "architecture": "x64",
     "processeur": "12th Gen Intel(R) Core(TM) i3-1215U",
     "coeurs": 8,
     "memoireGiB": 15.3,
     "bun": "1.4.2",
     "node": "v26.3.0",
-    "git": "62697076f"
+    "git": "61aed8d40"
   },
   "protocole": {
     "passages": 10,
@@ -31,14 +31,14 @@
       },
       "calculMsParImage": {
         "n": 10,
-        "mediane": 1.3,
-        "p95": 1.4,
-        "min": 1.3,
-        "max": 1.4,
-        "moyenne": 1.32
+        "mediane": 0.9,
+        "p95": 1.1,
+        "min": 0.8,
+        "max": 1.1,
+        "moyenne": 0.91
       },
       "trace": {
-        "dureeTachesMs": 0.002,
+        "dureeTachesMs": 0.001,
         "dureeScriptMs": 0
       },
       "outils": {
@@ -50,35 +50,47 @@
       "evenements": 10000,
       "dureeMs": {
         "n": 10,
-        "mediane": 2.556,
-        "p95": 6.029,
-        "min": 2.238,
-        "max": 6.029,
-        "moyenne": 3.397
+        "mediane": 1.838,
+        "p95": 2.563,
+        "min": 1.379,
+        "max": 2.563,
+        "moyenne": 2.001
       },
-      "debitEvenementsParSeconde": 3912363
+      "debitEvenementsParSeconde": 5440696
     },
     "markdown": {
       "lignes": 5000,
       "dureeMs": {
         "n": 10,
-        "mediane": 113.23,
-        "p95": 166.797,
-        "min": 105.732,
-        "max": 166.797,
-        "moyenne": 120.06
+        "mediane": 71.71,
+        "p95": 86.383,
+        "min": 62.224,
+        "max": 86.383,
+        "moyenne": 73.291
       },
       "outil": "17.0.1"
+    },
+    "markdownProduction": {
+      "lignes": 5000,
+      "dureeMs": {
+        "n": 10,
+        "mediane": 11.568,
+        "p95": 17.219,
+        "min": 9.134,
+        "max": 17.219,
+        "moyenne": 12.248
+      },
+      "outil": "parseMarkdown (AST sur, packages/webui/src/markdown.ts)"
     },
     "recherche": {
       "fichiers": 20000,
       "dureeMs": {
         "n": 10,
-        "mediane": 55.567,
-        "p95": 62.266,
-        "min": 48.485,
-        "max": 62.266,
-        "moyenne": 55.367
+        "mediane": 31.453,
+        "p95": 36.396,
+        "min": 29.51,
+        "max": 36.396,
+        "moyenne": 32.058
       },
       "outil": "ripgrep (rg)"
     },
@@ -86,11 +98,11 @@
       "commande": "bun run web",
       "dureeMs": {
         "n": 10,
-        "mediane": 4937.895,
-        "p95": 5238.922,
-        "min": 2689.62,
-        "max": 5238.922,
-        "moyenne": 4740.279
+        "mediane": 2814.851,
+        "p95": 3025.127,
+        "min": 2316.63,
+        "max": 3025.127,
+        "moyenne": 2682.843
       }
     }
   }
