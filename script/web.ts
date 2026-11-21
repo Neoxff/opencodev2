@@ -12,6 +12,7 @@ import { existsSync } from "node:fs"
 import path from "node:path"
 import { LinkConfigError, loadLinkConfig, workspacePath } from "./link-config"
 import { ecrireGitToken, genererGitToken, GIT_TOKEN_ENV } from "../packages/opencode/src/opencodev2/token"
+import { commandeServeur, environnementWeb } from "./garde-fous"
 
 const root = path.resolve(import.meta.dir, "..")
 const webui = path.join(root, "packages", "webui")
@@ -67,9 +68,18 @@ console.log(`[web] ouvre http://127.0.0.1:${port}`)
 const gitTokenEnv = process.env[GIT_TOKEN_ENV] ?? genererGitToken()
 ecrireGitToken(gitTokenEnv)
 
-const server = Bun.spawn([bun, "--conditions=browser", entry, "serve", "--port", port], {
+// Garde-fous mémoire : pas d'autodémarrage du démon ni d'éval réelle depuis le
+// harnais web ; plafond mémoire optionnel via systemd-run (OPENCODEV2_MEM_MAX).
+const environnementServeur = environnementWeb(process.env, {
+  webUiDir: dist,
+  gitTokenEnv: GIT_TOKEN_ENV,
+  gitToken: gitTokenEnv,
+})
+const commandeServeurWeb = commandeServeur(bun, entry, ["serve", "--port", port], process.env)
+
+const server = Bun.spawn(commandeServeurWeb, {
   stdio: ["inherit", "inherit", "inherit"],
-  env: { ...process.env, OPENCODE_WEB_UI_DIR: dist, [GIT_TOKEN_ENV]: gitTokenEnv },
+  env: environnementServeur,
 })
 
 // Transmet l'interruption pour ne pas laisser de serveur orphelin.
