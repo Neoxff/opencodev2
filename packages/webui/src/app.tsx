@@ -119,6 +119,8 @@ import { pluginEntries, type PluginList } from "./nav"
 import { SESSION_LIMIT, groupByWorkspace, sessionDetails, splitSessions, type ProjectRef, type SessionSummary, type WorkspaceGroup as WorkspaceGrouping } from "./sessions"
 import { subscribeEvents, type EventStreamState } from "./events"
 import { GitPanel } from "./git-panel"
+import { CompteurFps } from "./compteur-fps"
+import { ListeLongue } from "./liste-longue"
 import { gitApi } from "./git-client"
 import {
   activityFromStatus,
@@ -2485,19 +2487,22 @@ export default function App() {
             {/* Le **journal brut** — ce que la page a réellement reçu. Il vivait dans le tiroir avec
                 les statistiques, retirées le 2026-10-15 ; sa place est ici, où la cible §4 le met :
                 la vue Logs est le seul endroit qu'on ouvre en se demandant « il ne se passe rien ? ». */}
+            <CompteurFps />
             <details class="log-events">
               <summary>Raw events ({logEntries().length})</summary>
               <Show when={logEntries().length > 0} fallback={<p class="log-empty">No events received yet.</p>}>
-                <ul class="log-list">
-                  <For each={[...logEntries()].reverse()}>
-                    {(entry) => (
-                      <li class="log-row">
-                        <span class="log-time">{new Date(entry.at).toLocaleTimeString()}</span>
-                        <span class="log-type">{entry.type}{entry.note ? ` → ${entry.note}` : ""}</span>
-                      </li>
-                    )}
-                  </For>
-                </ul>
+                <ListeLongue
+                  class="log-list"
+                  elements={[...logEntries()].reverse()}
+                  hauteurLigne={28}
+                  hauteurVue={480}
+                  renduLigne={(entry) => (
+                    <div class="log-row">
+                      <span class="log-time">{new Date(entry.at).toLocaleTimeString()}</span>
+                      <span class="log-type">{entry.type}{entry.note ? ` → ${entry.note}` : ""}</span>
+                    </div>
+                  )}
+                />
               </Show>
             </details>
           </Show>
