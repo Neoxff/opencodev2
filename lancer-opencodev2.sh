@@ -48,6 +48,43 @@ PORT="$(lire_config port '4096')"
 WORKSPACE="$(lire_config workspace '.')"
 echo "[lanceur] config : repo=${REPO} port=${PORT} workspace=${WORKSPACE}"
 
+# ---------------------------------------------------------------------------
+# 2b. Port déjà occupé : message clair et port libre propose
+#     Sans cela, Bun.serve leve une ServeError et le serveur meurt avec un
+#     message « Unexpected error » qui ne dit pas que le port est pris.
+# ---------------------------------------------------------------------------
+port_occupe() {
+  local p="$1"
+  # /dev/tcp : une connexion reussie signifie qu'un processus ecoute.
+  # Le test dans un 'if' neutralise 'set -e' quand le port est libre.
+  if (exec 3<>"/dev/tcp/127.0.0.1/${p}") 2>/dev/null; then
+    return 0
+  fi
+  # Repli si /dev/tcp indisponible : ss (iproute2, present sur Arch).
+  if command -v ss >/dev/null 2>&1 && ss -ltnH "sport = :${p}" 2>/dev/null | grep -q .; then
+    return 0
+  fi
+  return 1
+}
+
+if port_occupe "$PORT"; then
+  PORT_LIBRE="$PORT"
+  for _ in {1..20}; do
+    PORT_LIBRE=$((PORT_LIBRE + 1))
+    port_occupe "$PORT_LIBRE" || break
+  done
+  if port_occupe "$PORT_LIBRE"; then
+    echo "[lanceur] ERREUR : port ${PORT} occupe et aucun port libre trouve (${PORT}..${PORT_LIBRE})." >&2
+    echo "[lanceur] Liberez le port ou changez 'port' dans opencodev2.config.json." >&2
+    exit 1
+  fi
+  echo "[lanceur] ATTENTION : le port ${PORT} est deja occupe (ServeError evitee)."
+  echo "[lanceur] Port libre propose : ${PORT_LIBRE}."
+  echo "[lanceur] Pour garder le port ${PORT}, liberez-le puis relancez ; ou modifiez 'port' dans opencodev2.config.json."
+  export OPENCODE_SERVER_PORT="$PORT_LIBRE"
+  PORT="$PORT_LIBRE"
+fi
+
 if [[ "$WORKSPACE" = /* ]]; then
   TARGET="$WORKSPACE"
 else
