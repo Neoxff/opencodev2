@@ -18,20 +18,16 @@ import {
   type GitStatus,
   type ReglagesAuto,
 } from "./git-client"
+import { libelleErreurLocal, t, type Cle, type Langue } from "./git-i18n"
 import "./git-panel.css"
-
-const ETAT_TEXTE: Record<GitEtat, string> = {
-  "a-jour": "À jour",
-  "en-avance": "En avance",
-  "en-retard": "En retard",
-  divergent: "Divergent",
-  conflit: "Conflit",
-  "hors-ligne": "Hors ligne",
-}
 
 type Action = "fetch" | "pull" | "commit" | "push"
 
-export function GitPanel() {
+/** Langue par défaut « fr » : préserve les libellés des tests existants. */
+export function GitPanel(props: { lang?: Langue } = {}) {
+  const langue = () => props.lang ?? "fr"
+  const tr = (cle: Cle) => t(langue(), cle)
+  const etatTexte = (etat: GitEtat) => tr(`etat.${etat}` as Cle)
   const [statut, setStatut] = createSignal<GitStatus>()
   const [erreur, setErreur] = createSignal<string>()
   const [occupe, setOccupe] = createSignal<Action>()
@@ -113,11 +109,22 @@ export function GitPanel() {
   })
 
   return (
-    <section class="git-panel" data-etat={etat()} aria-label="Dépôt Git lié">
+    <section
+      class="git-panel"
+      data-etat={etat()}
+      aria-label={tr("panel.aria")}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          setConfirmation(undefined)
+          setAutoOuvert(false)
+          setMessage("")
+        }
+      }}
+    >
       <div class="git-head">
-        <span class="git-titre">Dépôt</span>
+        <span class="git-titre">{tr("panel.titre")}</span>
         <span class="git-etat" data-etat={etat()}>
-          {ETAT_TEXTE[etat()]}
+          {etatTexte(etat())}
         </span>
       </div>
 
@@ -125,23 +132,23 @@ export function GitPanel() {
         when={statut()}
         fallback={
           <div class="git-vide">
-            {erreur() === "NON_DISPONIBLE" ? "Jeton local absent" : "Chargement du dépôt…"}
+            {erreur() === "NON_DISPONIBLE" ? tr("vide.jeton") : tr("vide.chargement")}
           </div>
         }
       >
         {(s) => (
           <>
             <div class="git-ligne">
-              <span class="git-repo" title={s().repo ?? "dépôt local"}>
-                {s().repo ?? "dépôt local"}
+              <span class="git-repo" title={s().repo ?? tr("repo.local")}>
+                {s().repo ?? tr("repo.local")}
               </span>
               <span class="git-branche">{s().branch}</span>
             </div>
 
             <div class="git-ligne git-compteurs">
-              <span class="git-pastille" title="Commits en avance">↑{s().ahead}</span>
-              <span class="git-pastille" title="Commits en retard">↓{s().behind}</span>
-              <span class="git-modifies" title="Fichiers modifiés">{s().modified.length} modifié{s().modified.length > 1 ? "s" : ""}</span>
+              <span class="git-pastille" title={tr("compteurs.avance")}>↑{s().ahead}</span>
+              <span class="git-pastille" title={tr("compteurs.retard")}>↓{s().behind}</span>
+              <span class="git-modifies" title={tr("compteurs.modifies")}>{s().modified.length} {tr("compteurs.modifie")}{s().modified.length > 1 ? "s" : ""}</span>
             </div>
 
             <Show when={s().lastCommit}>
@@ -156,8 +163,8 @@ export function GitPanel() {
             <div class="git-actions">
               <button
                 class="git-bouton"
-                title="Récupérer (fetch)"
-                aria-label="Récupérer"
+                title={tr("action.fetch.titre")}
+                aria-label={tr("action.fetch.aria")}
                 disabled={Boolean(occupe())}
                 onClick={() => void ranimer("fetch", () => gitApi.fetch())}
               >
@@ -165,8 +172,8 @@ export function GitPanel() {
               </button>
               <button
                 class="git-bouton"
-                title="Mettre à jour (pull fast-forward)"
-                aria-label="Mettre à jour"
+                title={tr("action.pull.titre")}
+                aria-label={tr("action.pull.aria")}
                 disabled={Boolean(occupe()) || s().behind === 0}
                 onClick={() => void ranimer("pull", () => gitApi.pull())}
               >
@@ -175,8 +182,8 @@ export function GitPanel() {
               <button
                 class="git-bouton"
                 classList={{ actif: confirmation() === "commit" }}
-                title={confirmation() === "commit" ? "Confirmer le commit" : "Committer les fichiers modifiés"}
-                aria-label="Commit"
+                title={confirmation() === "commit" ? tr("action.commit.confirmer") : tr("action.commit.titre")}
+                aria-label={tr("action.commit.aria")}
                 disabled={Boolean(occupe()) || confirmation() === "push"}
                 onClick={() => {
                   if (confirmation() === "commit") {
@@ -193,8 +200,8 @@ export function GitPanel() {
               <button
                 class="git-bouton"
                 classList={{ actif: confirmation() === "push" }}
-                title={confirmation() === "push" ? "Confirmer le push (jamais de force)" : "Pousser (jamais de force)"}
-                aria-label="Pousser"
+                title={confirmation() === "push" ? tr("action.push.confirmer") : tr("action.push.titre")}
+                aria-label={tr("action.push.aria")}
                 disabled={Boolean(occupe()) || confirmation() === "commit"}
                 onClick={() => {
                   if (confirmation() === "push") void ranimer("push", () => gitApi.push())
@@ -209,31 +216,31 @@ export function GitPanel() {
               <div class="git-confirm">
                 <input
                   class="git-message"
-                  placeholder="Message du commit"
+                  placeholder={tr("confirm.message")}
                   value={message()}
                   onInput={(e) => setMessage(e.currentTarget.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Escape") setConfirmation(undefined)
                   }}
                 />
-                <button class="git-annuler" title="Annuler" onClick={() => setConfirmation(undefined)}>×</button>
+                <button class="git-annuler" title={tr("confirm.annuler")} onClick={() => setConfirmation(undefined)}>×</button>
               </div>
             </Show>
             <Show when={confirmation() === "push"}>
               <div class="git-confirm">
-                <span class="git-confirm-texte">Pousser vers origin ?</span>
-                <button class="git-annuler" title="Annuler" onClick={() => setConfirmation(undefined)}>×</button>
+                <span class="git-confirm-texte">{tr("confirm.push")}</span>
+                <button class="git-annuler" title={tr("confirm.annuler")} onClick={() => setConfirmation(undefined)}>×</button>
               </div>
             </Show>
 
             <Show when={erreur()}>
               {(e) => (
                 <div class="git-erreur" role="alert">
-                  <span class="git-erreur-message">{libelleErreur(e())}</span>
+                  <span class="git-erreur-message">{libelleErreurLocal(e(), langue(), libelleErreur(e()))}</span>
                   <button
                     class="git-erreur-action"
-                    title="Réessayer (actualiser l'état)"
-                    aria-label="Réessayer"
+                    title={tr("erreur.reessayer.titre")}
+                    aria-label={tr("erreur.reessayer.aria")}
                     onClick={() => void actualiser()}
                   >
                     ↻
@@ -261,7 +268,7 @@ export function GitPanel() {
             if (!autoOuvert()) void chargerAuto()
           }}
         >
-          Automatisme {autoOuvert() ? "▾" : "▸"}
+          {tr("auto.titre")} {autoOuvert() ? "▾" : "▸"}
         </button>
         <Show when={autoOuvert()}>
           <Show when={reglages()}>
@@ -274,7 +281,7 @@ export function GitPanel() {
                       checked={r().fetchAuDemarrage}
                       onChange={() => void basculerReglage("fetchAuDemarrage")}
                     />
-                    Récupérer au démarrage
+                    {tr("auto.reglage.fetch")}
                   </label>
                 </li>
                 <li>
@@ -284,7 +291,7 @@ export function GitPanel() {
                       checked={r().commitAuto}
                       onChange={() => void basculerReglage("commitAuto")}
                     />
-                    Commit automatique (branche agent/)
+                    {tr("auto.reglage.commit")}
                   </label>
                 </li>
                 <li>
@@ -294,7 +301,7 @@ export function GitPanel() {
                       checked={r().pushAuto}
                       onChange={() => void basculerReglage("pushAuto")}
                     />
-                    Pousser la branche agent
+                    {tr("auto.reglage.push")}
                   </label>
                 </li>
               </ul>
@@ -311,7 +318,7 @@ export function GitPanel() {
                     <Show when={e.statut === "ok" && e.action !== "fetch" && e.action !== "annulation"}>
                       <button
                         class="git-journal-annuler"
-                        title="Annuler (revert local)"
+                        title={tr("auto.journal.annuler")}
                         onClick={() => void annulerAction(e.id)}
                       >
                         ↶

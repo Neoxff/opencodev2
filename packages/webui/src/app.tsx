@@ -119,6 +119,7 @@ import { pluginEntries, type PluginList } from "./nav"
 import { SESSION_LIMIT, groupByWorkspace, sessionDetails, splitSessions, type ProjectRef, type SessionSummary, type WorkspaceGroup as WorkspaceGrouping } from "./sessions"
 import { subscribeEvents, type EventStreamState } from "./events"
 import { GitPanel } from "./git-panel"
+import { afficherDepot, basculerDepot, choisirLangue, langueInterface } from "./preferences"
 import { gitApi } from "./git-client"
 import {
   activityFromStatus,
@@ -2410,8 +2411,11 @@ export default function App() {
           </For>
           </div>
 
-          {/* Panneau « Dépôt » — état Git du dépôt lié et actions sûres. */}
-          <GitPanel />
+          {/* Panneau « Dépôt » — état Git du dépôt lié et actions sûres.
+              Sa visibilité est pilotée par le réglage, source de vérité unique. */}
+          <Show when={afficherDepot()}>
+            <GitPanel lang={langueInterface()} />
+          </Show>
         </div>
 
         {/* 4 — Le pied : les **deux accès**, et rien d'autre.
@@ -2823,6 +2827,38 @@ export default function App() {
               onAdd={() => void addPlugin()}
               onRemove={(spec) => void removePlugin(spec)}
             />
+          </Show>
+
+          {/* Préférences d'interface : stockage local, pas une clé Config (les 37 clés
+              mesurées du serveur sont les seules que `SETTING_SPECS` peut porter). */}
+          <Show when={settingsSection() === "general"}>
+            <div class="set-block">
+              <h3 class="set-title">Repository panel</h3>
+              <div class="set-row">
+                <label class="set-label">Show repository panel</label>
+                <div class="set-control">
+                  <input
+                    type="checkbox"
+                    checked={afficherDepot()}
+                    aria-label="Show repository panel"
+                    onInput={() => basculerDepot()}
+                  />
+                </div>
+              </div>
+              <div class="set-row">
+                <label class="set-label">Panel language</label>
+                <div class="set-control">
+                  <select
+                    aria-label="Panel language"
+                    value={langueInterface()}
+                    onChange={(e) => choisirLangue(e.currentTarget.value === "en" ? "en" : "fr")}
+                  >
+                    <option value="fr">French</option>
+                    <option value="en">English</option>
+                  </select>
+                </div>
+              </div>
+            </div>
           </Show>
         </SettingsSheet>
       </Show>
