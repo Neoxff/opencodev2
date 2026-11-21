@@ -60,6 +60,7 @@ import { serveUIEffect } from "@/server/shared/ui"
 import { logsPageHtml } from "@/server/shared/logs-page"
 import { ServerAuth } from "@/server/auth"
 import { gitRoutes } from "./git-routes"
+import { healthRoutes } from "./health-routes"
 import { InstanceHttpApi, RootHttpApi } from "./api"
 import { PublicApi } from "./public"
 import { authorizationLayer, authorizationRouterMiddleware, v2AuthorizationLayer } from "./middleware/authorization"
@@ -208,7 +209,7 @@ type RouteRequirements =
 export function createRoutes(
   corsOptions?: CorsOptions,
 ): Layer.Layer<never, EffectConfig.ConfigError | Provider.ModelNotFoundError, RouteRequirements> {
-  return Layer.mergeAll(rootApiRoutes, eventApiRoutes, instanceRoutes, docRoute, logsRoute, gitRoutes, uiRoute).pipe(
+  return Layer.mergeAll(rootApiRoutes, eventApiRoutes, instanceRoutes, docRoute, logsRoute, gitRoutes, healthRoutes, uiRoute).pipe(
     Layer.provide([
       errorLayer,
       compressionLayer,
