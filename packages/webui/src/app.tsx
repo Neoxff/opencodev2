@@ -91,9 +91,6 @@ import { CrossIcon, FolderPlusIcon, GearIcon, PluginIcon, PlusIcon, SearchIcon, 
 import { TrajectoryView } from "./trajectory-view"
 import {
   commandChoices,
-  commandInsert,
-  fileInsert,
-  filterCommands,
   historyStep,
   isDoubleEscape,
   mentionQuery,
@@ -103,6 +100,18 @@ import {
   slashQuery,
   type CommandChoice,
 } from "./composer-keys"
+import {
+  commandRows,
+  commandToken,
+  isKnownCommand,
+  mentionRows,
+  moveMenuIndex,
+  paletteRows,
+  type MentionSession,
+  type MenuRow,
+} from "./menus"
+import { CommandPalette, SuggestMenu } from "./menu-components"
+import { relativeTime } from "./time"
 import { contractFrom, contractPayload, todosFrom, type ContractDraft, type ContractView, type TodoView } from "./plan"
 import {
   agentCounts,
@@ -330,6 +339,19 @@ export default function App() {
    */
   const [menu, setMenu] = createSignal<"commands" | "files" | undefined>()
   const [menuIndex, setMenuIndex] = createSignal(0)
+  /**
+   * La palette `ctrl+p` — les mêmes commandes que le `/`, dans une boîte de dialogue.
+   * Son état est séparé du menu du champ : les deux peuvent être ouverts l'un après l'autre,
+   * et la palette a son propre champ de filtre et sa propre ligne active.
+   */
+  const [paletteOpen, setPaletteOpen] = createSignal(false)
+  const [paletteQuery, setPaletteQuery] = createSignal("")
+  const [paletteIndex, setPaletteIndex] = createSignal(0)
+  /**
+   * Une commande inconnue est refusée **avant** l'envoi : ce message dit pourquoi le texte n'est
+   * pas parti, plutôt que de laisser croire à un envoi silencieux.
+   */
+  const [commandError, setCommandError] = createSignal<string | undefined>()
   /**
    * Les commandes, lues à la **première** frappe de `/` seulement — `GET /command` pèse 1,95 Mo de
    * gabarits dont la liste n'affiche que le nom et la description.
@@ -724,36 +746,93 @@ export default function App() {
     setMenu(undefined)
   }
 
-  /** Ce que la liste ouverte propose, déjà réduit à deux colonnes : le nom, et le détail s'il y en a. */
-  const suggestions = createMemo(() => {
-    if (menu() === "commands") {
-      return filterCommands(commandOptions(), slashQuery(draft()) ?? "").map((command) => ({
-        name: `/${command.name}`,
-        detail: command.description ?? command.source,
-      }))
-    }
-    return fileOptions().map((path) => ({ name: path, detail: undefined as string | undefined }))
+  /**
+   * Les sessions proposées par le `@` — titre et âge relatif calculés ici, nulle part ailleurs :
+   * la projection pure ne sait rien de l'horloge, et ses tests la nourrissent avec des valeurs
+   * fixes. Le temps vient de la même fonction que la ligne du rail, pour que les deux ne
+   * divergent pas.
+   */
+  const mentionSessions = createMemo<MentionSession[]>(() =>
+    sessions().slice(0, 12).map((session) => ({
+      id: session.id,
+      title: session.title || "(untitled)",
+      when: relativeTime(sessionTimestamp(session), now()) || "now",
+    })),
+  )
+
+  /** Le mot en cours après `@`, lu depuis l'intervalle retenu par `refreshMenu`. */
+  const mentionText = () => {
+    const range = mentionRange()
+    return range ? draft().slice(range.start + 1, range.end) : ""
+  }
+
+  /** Ce que la liste ouverte propose — une seule projection pour le `/`, le `@` et la palette. */
+  const suggestions = createMemo<MenuRow[]>(() => {
+    if (menu() === "commands") return commandRows(commandOptions(), slashQuery(draft()) ?? "")
+    if (menu() === "files") return mentionRows(fileOptions(), mentionSessions(), mentionText())
+    return []
   })
 
+  /** Les commandes de la palette : le même registre, le même filtre, la même présentation. */
+  const paletteItems = createMemo(() => paletteRows(commandOptions(), paletteQuery()))
+
   /**
-   * Choisir une suggestion.
-   *
-   * Une commande **remplace tout le texte** : elle s'écrit en tête, et il n'y a donc rien à conserver
-   * avant elle. Une mention, elle, remplace **son mot** — `lis @src/a.ts et compare` garde sa phrase.
+   * Le garde-fou d'envoi : un texte qui commence par `/` doit nommer une commande **connue du
+   * serveur**. Le registre est relu avant la décision — il est chargé paresseusement, et un texte
+   * tapé vite ne doit pas être jugé sur une liste encore vide. Sans ce garde-fou, une faute de
+   * frappe partait au modèle comme du texte ordinaire.
    */
-  const acceptSuggestion = (index: number) => {
-    if (menu() === "commands") {
-      const command = suggestions()[index]
-      if (!command) return
-      setDraft(commandInsert(command.name.replace(/^\//, "")))
-      setMenu(undefined)
-      input?.focus()
+  const guardCommand = async (text: string): Promise<boolean> => {
+    const token = commandToken(text)
+    if (!token) {
+      setCommandError(undefined)
+      return true
+    }
+    await loadCommands()
+    if (isKnownCommand(token, commandOptions())) {
+      setCommandError(undefined)
+      return true
+    }
+    setCommandError(`Unknown command "/${token}". Nothing was sent to the model.`)
+    return false
+  }
+
+  /**
+   * Exécuter une commande — le serveur interprète le prompt quand il commence par `/`. On pose le
+   * texte et on l'envoie : c'est une action réelle, pas l'ouverture d'un panneau simulé.
+   */
+  const executeCommand = (name: string) => {
+    setPaletteOpen(false)
+    setMenu(undefined)
+    setDraft(`/${name} `)
+    setHistoryIndex(-1)
+    void guardCommand(`/${name}`).then((allowed) => {
+      if (allowed) void send()
+    })
+  }
+
+  /**
+   * Activer une suggestion.
+   *
+   * `Entrée` **exécute** une commande ; `Tab` ne fait que la **compléter** — on garde la main pour
+   * écrire son argument. Une mention, elle, remplace **son mot** : `lis @src/a.ts et compare`
+   * garde sa phrase, et le curseur se repose juste après ce qui vient d'être inséré.
+   */
+  const activateSuggestion = (index: number, execute: boolean) => {
+    const row = suggestions()[index]
+    if (!row) return
+    if (row.kind === "command") {
+      if (execute && row.command) executeCommand(row.command)
+      else {
+        setDraft(row.completion)
+        setMenu(undefined)
+        input?.focus()
+      }
       return
     }
-    const path = fileOptions()[index]
     const range = mentionRange()
-    if (!path || !range) return
-    const edit = replaceRange(draft(), range.start, range.end, fileInsert(path))
+    if (!range) return
+    const edit = replaceRange(draft(), range.start, range.end, row.completion)
     setDraft(edit.text)
     setMenu(undefined)
     setMentionRange(undefined)
@@ -786,19 +865,16 @@ export default function App() {
     const element = event.currentTarget
     const rows = suggestions()
     if (menu() && rows.length > 0) {
-      if (event.key === "ArrowDown") {
+      const next = moveMenuIndex(menuIndex(), rows.length, event.key)
+      if (next !== undefined) {
         event.preventDefault()
-        setMenuIndex((index) => Math.min(index + 1, rows.length - 1))
-        return
-      }
-      if (event.key === "ArrowUp") {
-        event.preventDefault()
-        setMenuIndex((index) => Math.max(index - 1, 0))
+        setMenuIndex(next)
         return
       }
       if (event.key === "Enter" || event.key === "Tab") {
         event.preventDefault()
-        acceptSuggestion(menuIndex())
+        // `Entrée` exécute la commande, `Tab` la complète seulement.
+        activateSuggestion(menuIndex(), event.key === "Enter")
         return
       }
       if (event.key === "Escape") {
@@ -809,7 +885,10 @@ export default function App() {
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
-      void send()
+      // Sur l'accueil aucune session n'est ouverte : c'est `sendFromHome` qui la crée avant
+      // l'envoi. Appeler `send()` directement laissait `Entrée` sans effet sur le premier message.
+      if (active()) void send()
+      else void sendFromHome()
       return
     }
     if (event.key === "Tab") {
@@ -1637,6 +1716,9 @@ export default function App() {
     const text = draft().trim()
     const files = attachments()
     if (!sessionID || (!text && files.length === 0)) return
+    // Un texte qui commence par `/` doit nommer une commande du registre serveur : un nom
+    // inconnu n'est **jamais** envoyé au modèle, même par accident.
+    if (!(await guardCommand(text))) return
     setDraft("")
     setAttachments([])
     setAttachError(undefined)
@@ -1748,7 +1830,19 @@ export default function App() {
     // Échap ferme la feuille de configuration — un panneau modal qui ne se ferme qu'à la souris
     // piège celui qui l'a ouvert au clavier.
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setConfigOpen(false)
+      // La palette s'ouvre de n'importe où, y compris hors du champ : c'est un geste global.
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
+        event.preventDefault()
+        setPaletteQuery("")
+        setPaletteIndex(0)
+        setPaletteOpen(true)
+        void loadCommands()
+        return
+      }
+      if (event.key === "Escape") {
+        if (paletteOpen()) setPaletteOpen(false)
+        else setConfigOpen(false)
+      }
     }
     window.addEventListener("keydown", onKey)
     // Debounced search: the list endpoint takes `search`, so the server does the filtering.
@@ -1975,6 +2069,9 @@ export default function App() {
   const sendFromHome = async (event?: { preventDefault: () => void }) => {
     event?.preventDefault()
     if (!draft().trim() && attachments().length === 0) return
+    // Même garde-fou que dans le compositeur : on ne crée pas une session pour y envoyer
+    // une commande inconnue.
+    if (!(await guardCommand(draft()))) return
     await createSession()
     if (!active()) return
     await send()
@@ -2013,6 +2110,17 @@ export default function App() {
         </div>
 
         <form class="home-composer" onSubmit={(event) => void sendFromHome(event)}>
+          {/* L'accueil est le premier écran : le `/` et le `@` doivent y ouvrir la même liste que
+              dans le compositeur de session, sinon le premier message ne peut rien choisir. */}
+          <Show when={menu() && suggestions().length > 0}>
+            <SuggestMenu
+              rows={suggestions()}
+              active={menuIndex()}
+              label={menu() === "commands" ? "commands" : "files"}
+              onHover={setMenuIndex}
+              onPick={(row) => activateSuggestion(suggestions().indexOf(row), false)}
+            />
+          </Show>
           <div class="composer-field">
             <ComposerMarkup text={draft()} />
             <textarea
@@ -2020,10 +2128,24 @@ export default function App() {
               rows="3"
               placeholder="Describe what you want to build, / commands, @ files"
               value={draft()}
-              onInput={(event) => setDraft(event.currentTarget.value)}
+              ref={(element: HTMLTextAreaElement) => (input = element)}
+              onInput={(event) => {
+                const value = event.currentTarget.value
+                setDraft(value)
+                setHistoryIndex(-1)
+                refreshMenu(value, event.currentTarget.selectionStart)
+              }}
+              onKeyDown={onComposerKey}
+              onKeyUp={(event) => {
+                if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+                  refreshMenu(draft(), event.currentTarget.selectionStart)
+                }
+              }}
+              onClick={(event) => refreshMenu(draft(), event.currentTarget.selectionStart)}
             />
           </div>
           <Show when={attachError()}>{(message) => <p class="error">{message()}</p>}</Show>
+          <Show when={commandError()}>{(message) => <p class="error">{message()}</p>}</Show>
           <div class="composer-bar">
             <label class="attach" title="Attach files">
               <PlusIcon size={16} />
@@ -2568,32 +2690,21 @@ export default function App() {
                 </ul>
               </Show>
               <Show when={attachError()}>{(message) => <p class="error">{message()}</p>}</Show>
+              <Show when={commandError()}>{(message) => <p class="error">{message()}</p>}</Show>
               {/* Le champ et son calque, dans une même boîte : le calque est **dessous**, à métriques
                   identiques, et le texte du champ est transparent. Le champ reste un `textarea` — le
                   seul contrôle qui garde un curseur, une sélection et le copier-coller du système. */}
               {/* La liste des suggestions, **au-dessus** du champ : c'est le clavier qui la pilote,
                   donc elle reste dans la même boîte et ne fait pas quitter le champ des yeux. */}
               <Show when={menu() && suggestions().length > 0}>
-                <div class="suggest" role="listbox" aria-label={menu() === "commands" ? "commands" : "files"}>
-                  <For each={suggestions()}>
-                    {(entry, index) => (
-                      <button
-                        type="button"
-                        class="suggest-row"
-                        classList={{ "is-active": menuIndex() === index() }}
-                        role="option"
-                        aria-selected={menuIndex() === index()}
-                        onMouseEnter={() => setMenuIndex(index())}
-                        onClick={() => acceptSuggestion(index())}
-                      >
-                        <span class="suggest-name">{entry.name}</span>
-                        <Show when={entry.detail}>
-                          {(detail) => <span class="suggest-detail">{detail()}</span>}
-                        </Show>
-                      </button>
-                    )}
-                  </For>
-                </div>
+                <SuggestMenu
+                  rows={suggestions()}
+                  active={menuIndex()}
+                  label={menu() === "commands" ? "commands" : "files"}
+                  onHover={setMenuIndex}
+                  /* Un clic complète, comme `Tab` : `Entrée` reste le geste qui exécute. */
+                  onPick={(row) => activateSuggestion(suggestions().indexOf(row), false)}
+                />
               </Show>
               <div class="composer-field">
                 <ComposerMarkup text={draft()} />
@@ -2829,6 +2940,29 @@ export default function App() {
             />
           </Show>
         </SettingsSheet>
+      </Show>
+
+      {/* La palette `ctrl+p` — les mêmes commandes que le `/`, avec son propre filtre et son
+          propre clavier. Elle vit à la racine pour couvrir toute la page, y compris le rail. */}
+      <Show when={paletteOpen()}>
+        <CommandPalette
+          rows={paletteItems()}
+          query={paletteQuery()}
+          active={paletteIndex()}
+          onQuery={(value) => {
+            setPaletteQuery(value)
+            setPaletteIndex(0)
+          }}
+          onActive={setPaletteIndex}
+          onMove={(key) => {
+            const next = moveMenuIndex(paletteIndex(), paletteItems().length, key)
+            if (next !== undefined) setPaletteIndex(next)
+          }}
+          onPick={(row) => {
+            if (row.command) executeCommand(row.command)
+          }}
+          onClose={() => setPaletteOpen(false)}
+        />
       </Show>
     </div>
   )
