@@ -5,7 +5,7 @@ Ce dossier contient les deux pièces de référence visuelle du projet. Elles so
 ## Les deux fichiers
 
 - `maquette-opencodev2-ui.html` — la maquette HTML de l'interface. C'est la source de vérité visuelle : elle fixe ce qui doit être reproduit à l'identique (espacements, rayons, tailles, polices, icônes, libellés anglais, texte qui s'estompe, curseur à trois points).
-- `reference-opencode-v2.png` — la transcription textuelle des libellés de la capture de référence (`opencodeV2`, `Workspaces`, `Archived`, `Server`, `New session`, `Goal definition`, `Working...`). Le fichier porte l'extension `.png` demandée ; son contenu est le texte fourni, conservé sans modification. Il sert de garde-fou pour les textes exacts.
+- `reference-opencode-v2.png` — la capture de référence de l'interface (image PNG 1920×1080). C'est la représentation visuelle à reproduire à l'identique ; elle sert de garde-fou pour les libellés exacts (`opencodeV2`, `Workspaces`, `Archived`, `Server`, `New session`, `Goal definition`, `Working...`), les espacements et les icônes.
 
 ## Ouvrir la maquette
 
