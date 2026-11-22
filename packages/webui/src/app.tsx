@@ -9,7 +9,6 @@ import {
   type Attachment,
 } from "./attachments"
 import { authHeaders } from "./auth"
-import { writeClipboard } from "./clipboard"
 import { client, credentials, fetchHealth, rememberCredentials, serverUrl, type Health } from "./client"
 import {
   DETAILS_DEFAULT,
@@ -23,6 +22,7 @@ import {
 import {
   Boundary,
   ComposerMarkup,
+  ComposerStats,
   TaskContract,
   TodoList,
   ContextInjections,
@@ -31,29 +31,17 @@ import {
   Media,
   PatchLine,
   PermissionSheet,
+  Prose,
   QuestionSheet,
   Reasoning,
   ShowMore,
   SessionRow,
   Spinner,
+  ToolLine,
   Turn,
   UserPrompt,
   WorkspaceGroup,
 } from "./components"
-import { COMPOSER_PLACEHOLDER, ComposerControls, ComposerStatusBar, ComposerSuggestions } from "./composer-ui"
-import {
-  ConversationHeader,
-  ConversationParagraph,
-  ConversationUserMessage,
-  DelegateRow,
-  EditRow,
-  RunRow,
-  ScrollChrome,
-  ThoughtRow,
-  toolDuration,
-} from "./conversation"
-import { type ModeCiel } from "./ciel-moteur"
-import CielEtoile from "./CielEtoile"
 import {
   AgentsSection,
   GeneralSection,
@@ -62,9 +50,6 @@ import {
   SettingsSheet,
 } from "./settings-sheet"
 import { ProvidersSection } from "./providers"
-import { browserStorage, readSkyMode, writeSkyMode } from "./sky/preferences"
-import { SkyCanvas, SkySection } from "./sky/sky"
-import type { SkyMode } from "./sky/types"
 import {
   SETTINGS_SECTIONS,
   SETTING_SPECS,
@@ -96,33 +81,21 @@ import {
   modelPatch,
   newProviderDraft,
   parseModelChoice,
-  modelVariantCatalog,
-  preferredVariant,
   providerId,
   providerPatch,
   toggleModel,
 } from "./settings"
-import { Picker } from "./picker"
+import { FolderPicker, Picker } from "./picker"
 import { FolderBrowser } from "./folder-browser"
-import { PlusIcon, SendIcon } from "./icons"
-import "./shortcuts.css"
-import { ShortcutPalette, type PaletteCommand } from "./shortcut-palette"
-import {
-  deliveryNotice,
-  keyState,
-  matchShortcut,
-  partMetadata,
-  submitMode,
-  type SubmitMode,
-} from "./shortcuts"
 import { CrossIcon, FolderPlusIcon, GearIcon, PluginIcon, PlusIcon, SearchIcon, SendIcon } from "./icons"
-import { FolderPicker } from "./picker"
-import { FolderBrowser } from "./folder-browser"
-import { CrossIcon, FolderPlusIcon, GearIcon, PluginIcon, PlusIcon, SearchIcon } from "./icons"
 import { TrajectoryView } from "./trajectory-view"
 import {
   commandChoices,
+  commandInsert,
+  fileInsert,
+  filterCommands,
   historyStep,
+  isDoubleEscape,
   mentionQuery,
   nextChoice,
   promptHistory,
@@ -130,24 +103,6 @@ import {
   slashQuery,
   type CommandChoice,
 } from "./composer-keys"
-import {
-  commandRows,
-  commandToken,
-  isKnownCommand,
-  mentionRows,
-  moveMenuIndex,
-  paletteRows,
-  type MentionSession,
-  type MenuRow,
-} from "./menus"
-import { CommandPalette, SuggestMenu } from "./menu-components"
-import { relativeTime } from "./time"
-  runCommandLine,
-  type CommandActivity,
-  type SessionCommandHost,
-  type SessionCommandTransport,
-} from "./session-commands"
-import { CommandActivityLines, SessionCommandDialogs, type CommandDialogState } from "./session-command-ui"
 import { contractFrom, contractPayload, todosFrom, type ContractDraft, type ContractView, type TodoView } from "./plan"
 import {
   agentCounts,
@@ -159,12 +114,9 @@ import {
   type Agent,
   type McpState,
 } from "./config"
-import EcranAccueil from "./EcranAccueil"
 import { injectionPhase, parseInjections, relativeTo } from "./injections"
 import { pluginEntries, type PluginList } from "./nav"
 import { SESSION_LIMIT, groupByWorkspace, sessionDetails, splitSessions, type ProjectRef, type SessionSummary, type WorkspaceGroup as WorkspaceGrouping } from "./sessions"
-import { MOTTOS, nextMottoIndex, salutation, type Motto } from "./ouverture"
-import { OpeningScreen } from "./ouverture-screen"
 import { subscribeEvents, type EventStreamState } from "./events"
 import { ConfigTab } from "./config-tab"
 import { LogsTab } from "./logs-tab"
@@ -176,67 +128,21 @@ import {
   type LogEntry,
 } from "./config-editor"
 import { GitPanel } from "./git-panel"
+import EcranAccueil from "./EcranAccueil"
 import RessourcesPanel from "./ressources-panel"
-import { RightPanel, type GoalAction } from "./right-panel"
-import { gitApi, type GitStatus } from "./git-client"
-import { afficherDepot, basculerDepot, choisirLangue, langueInterface } from "./preferences"
-import { CompteurFps } from "./compteur-fps"
-import { ListeLongue } from "./liste-longue"
 import { gitApi } from "./git-client"
 import {
+  activityFromStatus,
   createReloadGate,
   createTicketGuard,
   createLatestGate,
   resyncPlan,
   threadEventOutcome,
 } from "./stream-sync"
-import { relativeTime, sessionTimestamp } from "./time"
-import {
-  SidebarActions,
-  SidebarFolder,
-  SidebarFooter,
-  SidebarHistory,
-  SidebarLogo,
-  SidebarNewSession,
-  SidebarReadMore,
-  SidebarSession,
-  groupLatestTime,
-  recentSessions,
-  sessionActivityMap,
-} from "./sidebar"
 import { sessionTimestamp } from "./time"
-import { CommandHost } from "./ui-command-dialog"
-import {
-  HELP_KEYS,
-  THEMES,
-  isCommandId,
-  type CommandData,
-  type DiffFile,
-  type Row,
-  type ViewId,
-} from "./ui-commands"
-import {
-  choiceRows,
-  diffFiles,
-  mcpRows,
-  providerRows as authProviderRows,
-  sessionRows,
-  skillRows,
-  stamp,
-  subagentRows,
-  timelineRows,
-  variantRows,
-  variantsForModel,
-  type Skill,
-} from "./ui-commands-data"
 import {
   answerDocuments,
   dropPermission,
-  fileDiff,
-  formatDuration,
-  toolDetail,
-  toolStatusLabel,
-  toolTitle,
   dropQuestion,
   emptyAnswers,
   groupTurns,
@@ -273,19 +179,10 @@ export default function App() {
   const [health, setHealth] = createSignal<Health | undefined>()
   const [sessions, setSessions] = createSignal<SessionSummary[]>([])
   const [active, setActive] = createSignal<string | undefined>()
-  /**
-   * Écran d'ouverture : salut selon l'heure et mot d'ordre tirés une fois par
-   * ouverture. L'index du mot d'ordre est mémorisé localement par
-   * `nextMottoIndex` (avec repli aléatoire) ; aucun appel réseau n'est fait.
-   */
-  const [greeting, setGreeting] = createSignal(salutation(new Date()))
-  const [motto, setMotto] = createSignal<Motto>(MOTTOS[nextMottoIndex()]!)
   const [messages, setMessages] = createSignal<Message[]>([])
   const [stream, setStream] = createSignal<EventStreamState>({ connected: false, reconnects: 0 })
   /** L'agent travaille : le serveur le dit (`session.status` → `busy`), on ne le devine pas. */
   const [working, setWorking] = createSignal(false)
-  /** L'activité **par session**, lue sur `GET /session/status` puis tenue par les événements. */
-  const [sessionBusy, setSessionBusy] = createSignal<Record<string, boolean>>({})
   /**
    * L'identité des tours, gardée **entre deux rendus** : un tour dont les messages n'ont pas bougé
    * est rendu tel quel, et Solid garde donc ses nœuds (mesuré : sans ce cache, l'animation d'entrée
@@ -324,13 +221,6 @@ export default function App() {
    */
   const [drawerOpen, setDrawerOpen] = createSignal(false)
   const [drawerTab, setDrawerTab] = createSignal<"session" | "decisions">("session")
-  /**
-   * Le panneau droit (« comme le CLI ») : cinq sections qui lisent les signaux déjà présents —
-   * contrat, statistiques, MCP, LSP, todos. Il partage la colonne `details` avec le tiroir.
-   */
-  const [panelOpen, setPanelOpen] = createSignal(true)
-  /** État Git réel du dépôt — pour le pied du panneau `dossier:branche`. */
-  const [gitStatus, setGitStatus] = createSignal<GitStatus>()
   /**
    * La **vue** du panneau principal : la conversation, ou le journal.
    *
@@ -416,19 +306,6 @@ export default function App() {
   const [composerModel, setComposerModel] = createSignal("")
   const [composerAgent, setComposerAgent] = createSignal("")
   /**
-   * Les variantes sont projetées depuis `/config/providers` au moment où le catalogue est lu : la
-   * charge brute, elle contient des clés en clair et ne survit pas à cette projection.
-   */
-  const [variantCatalog, setVariantCatalog] = createSignal<Record<string, Choice[]>>({})
-  const [composerVariant, setComposerVariant] = createSignal("")
-  const variantOptions = createMemo(() => variantCatalog()[composerModel()] ?? [])
-  /** La variante affichée et envoyée : choix explicite valide, sinon la première offerte par le modèle. */
-  const activeVariant = createMemo(() => {
-    const current = composerVariant()
-    const choices = variantOptions()
-    return choices.some((choice) => choice.value === current) ? current : preferredVariant(choices)
-  })
-  /**
    * Le plan de la session — ses todos et son contrat — affiché juste au-dessus du compositeur.
    *
    * Il vit **hors du fil** : ce sont des informations d'état courant, pas un moment passé. Le fil
@@ -448,11 +325,6 @@ export default function App() {
   const [modelLimits, setModelLimits] = createSignal<Record<string, number>>({})
   /** Les agents proposables — chargés à la première ouverture du choix, jamais au montage (1,5 Mo). */
   const [agentOptions, setAgentOptions] = createSignal<Choice[]>([])
-  const labelOf = (choices: Choice[], value: string, fallback: string) =>
-    choices.find((choice) => choice.value === value)?.label ?? (value || fallback)
-  const agentLabel = createMemo(() => labelOf(agentOptions(), composerAgent(), "orchestrator"))
-  const modelLabel = createMemo(() => labelOf(modelOptions(), composerModel(), "default model"))
-  const variantLabel = createMemo(() => activeVariant() || "default variant")
   /**
    * Le modèle et l'agent de la saisie suivent **ce que la session a réellement utilisé**.
    *
@@ -469,8 +341,6 @@ export default function App() {
       untrack(() => {
         if (!composerModel() && info.providerID && info.modelID) setComposerModel(`${info.providerID}/${info.modelID}`)
         if (!composerAgent() && typeof info.agent === "string" && info.agent) setComposerAgent(info.agent)
-        const requested = info.model?.variant
-        if (!composerVariant() && typeof requested === "string" && requested) setComposerVariant(requested)
       })
       return
     }
@@ -485,19 +355,6 @@ export default function App() {
   const [menu, setMenu] = createSignal<"commands" | "files" | undefined>()
   const [menuIndex, setMenuIndex] = createSignal(0)
   /**
-   * La palette `ctrl+p` — les mêmes commandes que le `/`, dans une boîte de dialogue.
-   * Son état est séparé du menu du champ : les deux peuvent être ouverts l'un après l'autre,
-   * et la palette a son propre champ de filtre et sa propre ligne active.
-   */
-  const [paletteOpen, setPaletteOpen] = createSignal(false)
-  const [paletteQuery, setPaletteQuery] = createSignal("")
-  const [paletteIndex, setPaletteIndex] = createSignal(0)
-  /**
-   * Une commande inconnue est refusée **avant** l'envoi : ce message dit pourquoi le texte n'est
-   * pas parti, plutôt que de laisser croire à un envoi silencieux.
-   */
-  const [commandError, setCommandError] = createSignal<string | undefined>()
-  /**
    * Les commandes, lues à la **première** frappe de `/` seulement — `GET /command` pèse 1,95 Mo de
    * gabarits dont la liste n'affiche que le nom et la description.
    */
@@ -509,6 +366,8 @@ export default function App() {
   const [historyIndex, setHistoryIndex] = createSignal(-1)
   /** Le champ, pour reposer le curseur après un remplacement. */
   let input: HTMLTextAreaElement | undefined
+  /** L'instant du dernier `Échap` — un `let`, pas un signal : rien ne l'affiche. */
+  let lastEscape: number | undefined
   let fileTimer: ReturnType<typeof setTimeout> | undefined
   const [query, setQuery] = createSignal("")
   /**
@@ -519,15 +378,6 @@ export default function App() {
   const [renameDraft, setRenameDraft] = createSignal("")
   // Confirmation en ligne : un `window.confirm` natif ne se style pas et bloque tout pilotage.
   const [confirming, setConfirming] = createSignal<string | undefined>()
-  /** Les lignes skill/MCP du fil : le nom réellement invoqué, jamais un exemple. */
-  const [commandActivities, setCommandActivities] = createSignal<CommandActivity[]>([])
-  /** Le dialogue ouvert par une commande de session (renommage, sortie, suppression, éditeur). */
-  const [commandDialog, setCommandDialog] = createSignal<CommandDialogState | undefined>()
-  /** Un accusé de réception court, distinct de l'erreur : une commande réussie le dit. */
-  const [commandNotice, setCommandNotice] = createSignal<string | undefined>()
-  let noticeTimer: ReturnType<typeof setTimeout> | undefined
-  /** La promesse ouverte par `/exit` : résolue par le bouton du dialogue. */
-  let exitResolver: ((accepted: boolean) => void) | undefined
   /**
    * Le menu « … » d'une ligne de session : quelle ligne l'a ouvert. **Une seule à la fois** — c'est
    * ce qui distingue un menu d'une rangée de boutons : le menu se ferme en s'ouvrant ailleurs.
@@ -580,11 +430,6 @@ export default function App() {
   const [headDraft, setHeadDraft] = createSignal("")
   // Configuration : lue seulement quand la feuille s'ouvre. Rien de tout cela ne s'affiche au repos.
   const [configOpen, setConfigOpen] = createSignal(false)
-  /** La palette Ctrl+P : un calque, donc Échap la ferme avant d'interrompre l'agent. */
-  const [paletteOpen, setPaletteOpen] = createSignal(false)
-  /** Retour court des raccourcis (file, steer) — effacé après quelques secondes. */
-  const [shortcutNotice, setShortcutNotice] = createSignal<string | undefined>()
-  let shortcutTimer: ReturnType<typeof setTimeout> | undefined
   const [config, setConfig] = createSignal<{
     model?: unknown
     small_model?: unknown
@@ -625,24 +470,6 @@ export default function App() {
   const [settingsNotice, setSettingsNotice] = createSignal<string | undefined>()
   const [settingsError, setSettingsError] = createSignal<string | undefined>()
   const [settingsBusy, setSettingsBusy] = createSignal<string | undefined>()
-  /**
-   * Le ciel : préférence **de ce navigateur**, persistée dans `localStorage`
-   * (et non dans la configuration serveur). Sans valeur enregistrée, on
-   * respecte `prefers-reduced-motion` — le doc de design impose `static`.
-   */
-  const [skyMode, setSkyMode] = createSignal<SkyMode>(
-    readSkyMode(
-      browserStorage(),
-      typeof window !== "undefined" &&
-        typeof window.matchMedia === "function" &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    ),
-  )
-  /** L'état est appliqué d'abord, la persistance ensuite — jamais l'inverse. */
-  const changeSkyMode = (mode: SkyMode) => {
-    setSkyMode(mode)
-    writeSkyMode(browserStorage(), mode)
-  }
   /** Les modèles saisis par agent, avant enregistrement. */
   const [agentDrafts, setAgentDrafts] = createSignal<Record<string, string>>({})
   /** La recherche d'agents : 34 lignes ne se parcourent pas, l'utilisateur sait ce qu'il cherche. */
@@ -663,9 +490,6 @@ export default function App() {
   const [plugins, setPlugins] = createSignal<PluginList | undefined>()
   // « voir plus » par dossier : replier est l'état par défaut, déplier est un geste explicite.
   const [moreOpen, setMoreOpen] = createSignal<Record<string, boolean>>({})
-  /** L'historique et les archives ne sont pas des panneaux permanents : ils s'ouvrent sur geste. */
-  const [historyOpen, setHistoryOpen] = createSignal(false)
-  const [archivedOpen, setArchivedOpen] = createSignal(false)
 
   /**
    * Les identifiants du serveur — **lus** ici, écrits par le bloc `Server` de `General`.
@@ -711,12 +535,7 @@ export default function App() {
    * `stats` basculait bien son état mais la colonne restait à **0 px** — le panneau se rendait dans
    * une colonne invisible, et le bouton paraissait mort alors que c'était la largeur qui manquait.
    */
-  const detailsWidth = () => {
-    // Le panneau droit se masque sous 1100 px (maquette) : on ne réserve alors pas sa colonne.
-    const drawer = drawerOpen() || permissions().length > 0
-    const panel = panelOpen() && viewport() >= 1100
-    return drawer || panel ? columns().details : 0
-  }
+  const detailsWidth = () => (drawerOpen() || permissions().length > 0 ? columns().details : 0)
 
   const layoutStyle = () => ({
     "grid-template-columns": `${columns().sidebar}px minmax(0, 1fr) ${detailsWidth()}px`,
@@ -741,6 +560,17 @@ export default function App() {
     }
     window.addEventListener("pointermove", onMove)
     window.addEventListener("pointerup", onUp)
+  }
+
+  /** Repli/dépli manuel : sous le seuil, un dépli explicite pose `narrowExpanded`. */
+  const toggleSidebar = () => {
+    if (sidebarPref() === 0) {
+      setSidebarPref(SIDEBAR_DEFAULT)
+      setNarrowExpanded(true)
+      return
+    }
+    setSidebarPref(0)
+    setNarrowExpanded(false)
   }
 
   /**
@@ -812,7 +642,6 @@ export default function App() {
     const payload = (result as { data?: unknown } | undefined)?.data
     setModelOptions(modelCatalog(payload))
     setModelLimits(modelContextLimits(payload))
-    setVariantCatalog(modelVariantCatalog(payload))
   }
 
   /** Les agents proposables — payés à la première ouverture du choix, pas au montage. */
@@ -919,93 +748,36 @@ export default function App() {
     setMenu(undefined)
   }
 
-  /**
-   * Les sessions proposées par le `@` — titre et âge relatif calculés ici, nulle part ailleurs :
-   * la projection pure ne sait rien de l'horloge, et ses tests la nourrissent avec des valeurs
-   * fixes. Le temps vient de la même fonction que la ligne du rail, pour que les deux ne
-   * divergent pas.
-   */
-  const mentionSessions = createMemo<MentionSession[]>(() =>
-    sessions().slice(0, 12).map((session) => ({
-      id: session.id,
-      title: session.title || "(untitled)",
-      when: relativeTime(sessionTimestamp(session), now()) || "now",
-    })),
-  )
-
-  /** Le mot en cours après `@`, lu depuis l'intervalle retenu par `refreshMenu`. */
-  const mentionText = () => {
-    const range = mentionRange()
-    return range ? draft().slice(range.start + 1, range.end) : ""
-  }
-
-  /** Ce que la liste ouverte propose — une seule projection pour le `/`, le `@` et la palette. */
-  const suggestions = createMemo<MenuRow[]>(() => {
-    if (menu() === "commands") return commandRows(commandOptions(), slashQuery(draft()) ?? "")
-    if (menu() === "files") return mentionRows(fileOptions(), mentionSessions(), mentionText())
-    return []
+  /** Ce que la liste ouverte propose, déjà réduit à deux colonnes : le nom, et le détail s'il y en a. */
+  const suggestions = createMemo(() => {
+    if (menu() === "commands") {
+      return filterCommands(commandOptions(), slashQuery(draft()) ?? "").map((command) => ({
+        name: `/${command.name}`,
+        detail: command.description ?? command.source,
+      }))
+    }
+    return fileOptions().map((path) => ({ name: path, detail: undefined as string | undefined }))
   })
 
-  /** Les commandes de la palette : le même registre, le même filtre, la même présentation. */
-  const paletteItems = createMemo(() => paletteRows(commandOptions(), paletteQuery()))
-
   /**
-   * Le garde-fou d'envoi : un texte qui commence par `/` doit nommer une commande **connue du
-   * serveur**. Le registre est relu avant la décision — il est chargé paresseusement, et un texte
-   * tapé vite ne doit pas être jugé sur une liste encore vide. Sans ce garde-fou, une faute de
-   * frappe partait au modèle comme du texte ordinaire.
-   */
-  const guardCommand = async (text: string): Promise<boolean> => {
-    const token = commandToken(text)
-    if (!token) {
-      setCommandError(undefined)
-      return true
-    }
-    await loadCommands()
-    if (isKnownCommand(token, commandOptions())) {
-      setCommandError(undefined)
-      return true
-    }
-    setCommandError(`Unknown command "/${token}". Nothing was sent to the model.`)
-    return false
-  }
-
-  /**
-   * Exécuter une commande — le serveur interprète le prompt quand il commence par `/`. On pose le
-   * texte et on l'envoie : c'est une action réelle, pas l'ouverture d'un panneau simulé.
-   */
-  const executeCommand = (name: string) => {
-    setPaletteOpen(false)
-    setMenu(undefined)
-    setDraft(`/${name} `)
-    setHistoryIndex(-1)
-    void guardCommand(`/${name}`).then((allowed) => {
-      if (allowed) void send()
-    })
-  }
-
-  /**
-   * Activer une suggestion.
+   * Choisir une suggestion.
    *
-   * `Entrée` **exécute** une commande ; `Tab` ne fait que la **compléter** — on garde la main pour
-   * écrire son argument. Une mention, elle, remplace **son mot** : `lis @src/a.ts et compare`
-   * garde sa phrase, et le curseur se repose juste après ce qui vient d'être inséré.
+   * Une commande **remplace tout le texte** : elle s'écrit en tête, et il n'y a donc rien à conserver
+   * avant elle. Une mention, elle, remplace **son mot** — `lis @src/a.ts et compare` garde sa phrase.
    */
-  const activateSuggestion = (index: number, execute: boolean) => {
-    const row = suggestions()[index]
-    if (!row) return
-    if (row.kind === "command") {
-      if (execute && row.command) executeCommand(row.command)
-      else {
-        setDraft(row.completion)
-        setMenu(undefined)
-        input?.focus()
-      }
+  const acceptSuggestion = (index: number) => {
+    if (menu() === "commands") {
+      const command = suggestions()[index]
+      if (!command) return
+      setDraft(commandInsert(command.name.replace(/^\//, "")))
+      setMenu(undefined)
+      input?.focus()
       return
     }
+    const path = fileOptions()[index]
     const range = mentionRange()
-    if (!range) return
-    const edit = replaceRange(draft(), range.start, range.end, row.completion)
+    if (!path || !range) return
+    const edit = replaceRange(draft(), range.start, range.end, fileInsert(path))
     setDraft(edit.text)
     setMenu(undefined)
     setMentionRange(undefined)
@@ -1014,13 +786,6 @@ export default function App() {
       input?.focus()
       input?.setSelectionRange(edit.caret, edit.caret)
     })
-  }
-
-  /** Un retour transitoire : le raccourci a agi, l'écran le dit, puis la trace disparaît. */
-  const flash = (text: string) => {
-    setShortcutNotice(text)
-    clearTimeout(shortcutTimer)
-    shortcutTimer = setTimeout(() => setShortcutNotice((current) => (current === text ? undefined : current)), 4000)
   }
 
   /**
@@ -1035,99 +800,40 @@ export default function App() {
     await client.session.abort({ sessionID, ...scope() }).catch((cause: unknown) => setError(String(cause)))
   }
 
-  /** `@ tag files` : on ouvre la mention au curseur, exactement comme si on l'avait tapée. */
-  const tagFiles = () => {
-    const element = input
-    const current = draft()
-    const caret = element?.selectionStart ?? current.length
-    const edit = replaceRange(current, caret, caret, " @")
-    setDraft(edit.text)
-    setHistoryIndex(-1)
-    queueMicrotask(() => {
-      element?.focus()
-      element?.setSelectionRange(edit.caret, edit.caret)
-      refreshMenu(edit.text, edit.caret)
-    })
-  }
-
-  /** `ctrl+p commands` : le menu `/` déjà testé, sans écraser ce qui est écrit. */
-  const openCommands = () => {
-    setMenu("commands")
-    setMenuIndex(0)
-    void loadCommands()
-    input?.focus()
-  }
-
   /**
    * Le clavier du champ — dans l'ordre où les touches se disputent.
    *
    * Le menu **consomme** les flèches, `Entrée` et `Échap` tant qu'il est ouvert : sinon on déplacerait
    * le curseur sous la liste, et `Entrée` enverrait le message au lieu de choisir la ligne.
    */
-  const onComposerKey = (
-    event: KeyboardEvent & { currentTarget: HTMLTextAreaElement },
-    submit: () => void = () => void send(),
-  ) => {
+  const onComposerKey = (event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) => {
     const element = event.currentTarget
-    const mod = event.ctrlKey || event.metaKey
-    const key = event.key.toLowerCase()
-    // Les raccourcis de session ne s'appliquent pas tant qu'un menu de suggestion est ouvert.
-    if (!menu()) {
-      if (mod && key === "d") {
-        // Suppression : confirmation obligatoire, jamais d'appel direct au serveur.
-        event.preventDefault()
-        const sessionID = active()
-        if (!sessionID) return
-        const session = sessions().find((item) => item.id === sessionID)
-        setConfirming(undefined)
-        setCommandDialog({ kind: "delete", sessionID, title: session?.title ?? "" })
-        return
-      }
-      if (event.altKey && key === "n") {
-        event.preventDefault()
-        void dispatchCommand("/new")
-        return
-      }
-      if (mod && key === "r") {
-        event.preventDefault()
-        const sessionID = active()
-        if (!sessionID) return
-        const session = sessions().find((item) => item.id === sessionID)
-        setCommandDialog({ kind: "rename", sessionID, value: session?.title ?? "" })
-        return
-      }
-    }
     const rows = suggestions()
     if (menu() && rows.length > 0) {
-      const next = moveMenuIndex(menuIndex(), rows.length, event.key)
-      if (next !== undefined) {
+      if (event.key === "ArrowDown") {
         event.preventDefault()
-        setMenuIndex(next)
+        setMenuIndex((index) => Math.min(index + 1, rows.length - 1))
+        return
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault()
+        setMenuIndex((index) => Math.max(index - 1, 0))
         return
       }
       if (event.key === "Enter" || event.key === "Tab") {
         event.preventDefault()
-        // `Entrée` exécute la commande, `Tab` la complète seulement.
-        activateSuggestion(menuIndex(), event.key === "Enter")
+        acceptSuggestion(menuIndex())
         return
       }
       if (event.key === "Escape") {
         event.preventDefault()
-        // Le menu consomme Échap : le gestionnaire global ne doit pas interrompre l'agent par-dessus.
-        event.stopPropagation()
         setMenu(undefined)
         return
       }
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
-      // Sur l'accueil aucune session n'est ouverte : c'est `sendFromHome` qui la crée avant
-      // l'envoi. Appeler `send()` directement laissait `Entrée` sans effet sur le premier message.
-      if (active()) void send()
-      else void sendFromHome()
-      // Pendant le travail, `promptAsync` met le message en file côté serveur ; le mode le dit.
-      void send(undefined, submitMode(false, working()))
-      submit()
+      void send()
       return
     }
     if (event.key === "Tab") {
@@ -1138,8 +844,18 @@ export default function App() {
       void loadAgentOptions().then((choices) => setComposerAgent((current) => nextChoice(choices, current)))
       return
     }
-    // Échap remonte au gestionnaire global : un seul Échap interrompt l'agent quand il travaille,
-    // comme dans la maquette. Ici, seul le menu de suggestions le consommait plus haut.
+    if (event.key === "Escape") {
+      // Deux `Échap` rapprochés arrêtent le travail ; un seul n'a rien fait de plus (le menu est
+      // déjà fermé ci-dessus, ou il n'était pas ouvert).
+      const now = Date.now()
+      if (working() && isDoubleEscape(lastEscape, now)) {
+        lastEscape = undefined
+        void abortRun()
+        return
+      }
+      lastEscape = now
+      return
+    }
     if (event.key === "ArrowUp" && element.selectionStart === 0 && element.selectionEnd === 0) {
       event.preventDefault()
       const step = historyStep(promptHistory(messages()), historyIndex(), "up")
@@ -1153,195 +869,6 @@ export default function App() {
       setHistoryIndex(step.index)
       setDraft(step.text)
       return
-    }
-  }
-
-  /* -----------------------------------------------------------------------------
-     Commandes d'interface (/agents, /models, /mcps…)
-
-     Une commande d'interface agit sur l'écran, jamais sur l'agent : la frappe est
-     interceptée avant `send()`, donc le serveur ne la voit pas. Les valeurs viennent
-     uniquement des signaux déjà alimentés par les routes réelles ; rien n'est codé en dur.
-     -------------------------------------------------------------------------- */
-  const UI_THEME_KEY = "oc.webui.theme"
-  const UI_DECISION_KEY = "oc.webui.decisionModel"
-  const UI_VISION_KEY = "oc.webui.visionModel"
-
-  const [command, setCommand] = createSignal<ViewId | undefined>()
-  const [decisionModel, setDecisionModel] = createSignal(localStorage.getItem(UI_DECISION_KEY) ?? "")
-  const [visionModel, setVisionModel] = createSignal(localStorage.getItem(UI_VISION_KEY) ?? "")
-  const [theme, setTheme] = createSignal(localStorage.getItem(UI_THEME_KEY) ?? "")
-  const [thinking, setThinking] = createSignal(false)
-  const [timestamps, setTimestamps] = createSignal(false)
-  const [variant, setVariant] = createSignal("")
-  const [skills, setSkills] = createSignal<Skill[]>([])
-  const [providers, setProviders] = createSignal<Record<string, unknown>>({})
-  const [diff, setDiff] = createSignal<DiffFile[]>([])
-  /** La charge brute des fournisseurs n'est jamais gardée : on ne lui demande que les variantes. */
-  const [variants, setVariants] = createSignal<string[]>([])
-
-  /**
-   * Les prompts réels de la session, avec l'index du tour dans le fil — c'est lui qui identifie
-   * l'ancre `data-turn` sur laquelle `/timeline` saute. L'index n'est pas recompté à partir de
-   * l'historique : il vient du fil rendu, donc l'ancre existe toujours.
-   */
-  const prompts = createMemo(() =>
-    turns()
-      .map((turn, index) => ({
-        index,
-        text: turn.prompt
-          .map((part) => (part.type === "text" ? part.text ?? "" : ""))
-          .join("")
-          .trim(),
-      }))
-      .filter((entry) => entry.text.length > 0),
-  )
-
-  /** Une commande qui a besoin du réseau charge ses choix à l'ouverture, pas au montage. */
-  const openCommand = (id: ViewId) => {
-    setCommand(id)
-    if (id === "skills" && skills().length === 0) {
-      void client.app
-        .skills(scope())
-        .then((result) => setSkills(((result as { data?: Skill[] } | undefined)?.data ?? []) as Skill[]))
-        .catch(() => setSkills([]))
-    }
-    if (id === "connect" && Object.keys(providers()).length === 0) {
-      void client.provider
-        .auth(scope())
-        .then((result) => setProviders(((result as { data?: Record<string, unknown> } | undefined)?.data ?? {}) as Record<string, unknown>))
-        .catch(() => setProviders({}))
-    }
-    if (id === "variants") {
-      void client.config
-        .providers()
-        .then((result) => setVariants(variantsForModel((result as { data?: unknown } | undefined)?.data, composerModel())))
-        .catch(() => setVariants([]))
-    }
-    if (id === "diff" && active()) {
-      const sessionID = active() as string
-      void client.session
-        .diff({ sessionID, ...scope() })
-        .then((result) => setDiff(diffFiles(((result as { data?: Array<{ file?: string; patch?: string; additions?: number; deletions?: number }> } | undefined)?.data ?? []))))
-        .catch(() => setDiff([]))
-    }
-  }
-
-  /** La palette `ctrl+p` ouvre la liste ; `/nom` ouvre une commande précise. */
-  const runSlash = (text: string): boolean => {
-    const first = text.trim().split(/\s+/)[0] ?? ""
-    const name = first.startsWith("/") ? first.slice(1) : ""
-    if (!isCommandId(name)) return false
-    setDraft("")
-    openCommand(name)
-    return true
-  }
-
-  /** Toutes les données réelles dont le dialogue a besoin, recalculées pendant le rendu. */
-  const commandData = createMemo<CommandData>(() => ({
-    agents: choiceRows(agentOptions(), composerAgent()),
-    models: choiceRows(modelOptions(), composerModel()),
-    variants: variantRows(variants(), variant()),
-    themes: THEMES,
-    decisionModel: decisionModel(),
-    visionModel: visionModel(),
-    sessions: sessionRows(sessions(), active()),
-    skills: skillRows(skills()),
-    subagents: subagentRows(agents()),
-    providers: authProviderRows(providers()),
-    mcps: mcpRows(mcp()),
-    status: [
-      ["Version", health()?.version ?? "unknown"],
-      ["Server", serverUrl || "same origin"],
-      ["Directory", directory() || serverPath() || "(server default)"],
-      ["Agent", composerAgent() || String(config().default_agent ?? "") || "(server default)"],
-      ["Model", composerModel() || String(config().model ?? "") || "(server default)"],
-      ["Context", `${stats().tokens} tokens`],
-      ["MCP", `${mcpConnectedCount(mcp())}/${Object.keys(mcp()).length} connected`],
-      ["LSP", "disabled"],
-    ],
-    help: HELP_KEYS,
-    timeline: timelineRows(
-      prompts().map((entry) => ({ value: String(entry.index), label: entry.text.replace(/\s+/g, " ").slice(0, 64), detail: `#${entry.index + 1}` })),
-    ),
-    diff: diff(),
-    thinking: thinking(),
-    timestamps: timestamps(),
-    theme: theme(),
-    configText: configPath() ? `${configPath()}\\opencode.jsonc (read-only preview)` : "opencode.jsonc",
-    logs: logEntries().map((entry) => `${new Date(entry.at).toLocaleTimeString()} ${entry.type}${entry.note ? ` → ${entry.note}` : ""}`),
-  }))
-
-  /** Choisir une ligne : la valeur est celle du serveur, jamais le libellé affiché. */
-  const pickCommand = (id: ViewId, value: string) => {
-    if (id === "palette") {
-      if (isCommandId(value)) openCommand(value)
-      return
-    }
-    switch (id) {
-      case "agents":
-        setComposerAgent(value)
-        break
-      case "models":
-        setComposerModel(value)
-        break
-      case "variants":
-        setVariant(value)
-        break
-      case "decision-model":
-        setDecisionModel(value)
-        localStorage.setItem(UI_DECISION_KEY, value)
-        break
-      case "vision-model":
-        setVisionModel(value)
-        localStorage.setItem(UI_VISION_KEY, value)
-        break
-      case "themes":
-        setTheme(value)
-        document.documentElement.dataset.th = value
-        localStorage.setItem(UI_THEME_KEY, value)
-        break
-      case "timeline": {
-        const index = Number(value)
-        const target = document.querySelector(`[data-turn="${index}"]`)
-        target?.scrollIntoView({ block: "center", behavior: "smooth" })
-        break
-      }
-      case "sessions":
-        void selectSession(value)
-        break
-      case "connect":
-        selectSection("providers")
-        setConfigOpen(true)
-        break
-      case "config":
-        setConfigOpen(true)
-        break
-      case "logs":
-        setView("logs")
-        break
-    }
-    setCommand(undefined)
-  }
-
-  /**
-   * Un interrupteur MCP est **réellement appliqué** : la route du serveur est appelée, puis l'état
-   * est relu — jamais deviné. Le panneau MCP et la barre de situations se recalent sur cette lecture.
-   */
-  const toggleCommand = (id: ViewId, row: Row, next: boolean) => {
-    if (id === "thinking") setThinking(next)
-    else if (id === "timestamps") setTimestamps(next)
-    else if (id === "mcps") {
-      const name = row.value
-      const action = next ? client.mcp.connect({ name, ...scope() }) : client.mcp.disconnect({ name, ...scope() })
-      void action
-        .then(() => client.mcp.status(scope()))
-        .then((result) => {
-          const data = (result as { data?: Record<string, McpState> } | undefined)?.data
-          if (data) setMcp(data)
-          if (configOpen()) void loadSettings("mcp")
-        })
-        .catch((cause: unknown) => setError(String(cause)))
     }
   }
 
@@ -1414,82 +941,6 @@ export default function App() {
     return true
   }
 
-  /**
-   * Les actions du panneau droit, écrites par la même route que l'édition du contrat. Les commandes
-   * `/goal-*` du TUI sont locales au terminal : le webui n'a pas de route serveur pour elles, il
-   * reproduit donc leur effet sur `goalState` par `PATCH /session/{id}` — le vrai chemin d'écriture.
-   */
-  const goalAction = async (action: GoalAction): Promise<boolean> => {
-    const sessionID = active()
-    if (!sessionID) return false
-    const raw = rawGoal()
-    if (!raw) return false
-    const base = raw as Record<string, unknown>
-    const version = typeof base.version === "number" ? base.version : 0
-    let changes: Record<string, unknown>
-    if (action === "approve") {
-      changes = { status: "approved", source: "user" }
-    } else if (action === "skip") {
-      changes = { status: "skipped", source: "user" }
-    } else {
-      // Generate / regenerate : même gabarit que le TUI, alimenté par le dernier prompt réel.
-      const source = promptHistory(messages())[0] ?? ""
-      changes = {
-        status: "draft",
-        source: "auto",
-        goal: source.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "Continuer la tâche demandée par l'utilisateur",
-        dod: ["Produire une réponse utile et actionnable alignée avec la demande en cours."],
-        outOfScope: [],
-      }
-    }
-    const payload = {
-      ...base,
-      ...changes,
-      version: action === "regenerate" || action === "generate" ? version + 1 : version,
-      updatedAt: Date.now(),
-    }
-    const result = await client.session
-      .update({
-        sessionID,
-        goalState: payload as Parameters<typeof client.session.update>[0]["goalState"],
-        ...scope(),
-      })
-      .catch((cause: unknown) => {
-        setError(String(cause))
-        return undefined
-      })
-    if (!result) return false
-    await loadPlan(sessionID)
-    return true
-  }
-
-  /** État MCP réel au montage — la section « réglages » ne le charge qu'à l'ouverture. */
-  const loadMcp = async () => {
-    const result = await client.mcp.status(scope()).catch(() => undefined)
-    const data = (result as { data?: Record<string, McpState> } | undefined)?.data
-    if (data) setMcp(data)
-  }
-
-  /** Configuration globale, lue pour le réglage `lsp` du panneau droit (19 ko). */
-  const loadPanelConfig = async () => {
-    const result = await client.global.config.get().catch(() => undefined)
-    const data = (result as { data?: Record<string, unknown> } | undefined)?.data
-    if (data) setConfig(data)
-  }
-
-  /** État Git réel — sans jeton injecté (Vite en développement), le pied affiche « — ». */
-  const loadGit = async () => {
-    const status = await gitApi.status().catch(() => undefined)
-    if (status) setGitStatus(status)
-  }
-
-  /** Dossier affiché dans le pied du panneau : dernier segment du répertoire de travail. */
-  const folderLabel = () => {
-    const dir = directory().trim() || serverPath() || ""
-    const parts = dir.split(/[\\/]/).filter(Boolean)
-    return parts.at(-1) ?? ""
-  }
-
   const loadMessages = async (sessionID: string) => {
     // Le plan se relit avec le fil : c'est au même moment qu'on en a besoin, et l'agent réécrit ses
     // todos à chaque étape — un plan lu une seule fois à l'ouverture serait périmé en une minute.
@@ -1544,21 +995,6 @@ export default function App() {
     setMessages(next)
   }
 
-  /**
-   * Revenir à l'accueil : c'est **chaque** retour à « aucune session active »
-   * qui tire un nouveau mot d'ordre, pas seulement le chargement initial.
-   * Le salut est relu aussi, pour suivre l'heure si la page reste ouverte.
-   */
-  const openHome = () => {
-    setActive(undefined)
-    setThread([])
-    setDraft("")
-    setAttachments([])
-    turnCache.clear()
-    setGreeting(salutation(new Date()))
-    setMotto(MOTTOS[nextMottoIndex()]!)
-  }
-
   const reloadThread = (sessionID: string) => {
     reloadGate.request(sessionID, async (key) => {
       const ticket = threadTickets.issue()
@@ -1593,9 +1029,7 @@ export default function App() {
     }).catch(() => undefined)
     if (!response?.ok) return
     const data = (await response.json().catch(() => undefined)) as unknown
-    const busy = sessionActivityMap(data)
-    setSessionBusy(busy)
-    setWorking(Boolean(busy[active() ?? ""]))
+    setWorking(activityFromStatus(data, active()))
   }
 
   const loadPermissions = async () => {
@@ -1819,6 +1253,12 @@ export default function App() {
   const openConfig = () => {
     setConfigOpen(true)
     void loadSettings(settingsSection())
+  }
+
+  /** L'entrée `plugins` du rail **ouvre** la section où ils s'ajoutent et se retirent. */
+  const openPlugins = () => {
+    selectSection("plugins")
+    setConfigOpen(true)
   }
 
   const selectSection = (key: SettingsSectionKey) => {
@@ -2205,126 +1645,11 @@ export default function App() {
       setError(String(cause))
       return undefined
     })
-    if (active() === session.id) openHome()
-    await loadSessions()
-  }
-
-  /* ---------------------------------------------------------------------------------------------
-     Commandes de session — le pont entre les décisions pures et le client SDK réel.
-     Aucun appel shell : `/editor` ouvre une vue, `/exit` ferme la vue de session.
-     ------------------------------------------------------------------------------------------ */
-
-  /** Le transport est le client SDK branché sur `scope()` : aucune donnée de démonstration. */
-  const commandTransport: SessionCommandTransport = {
-    create: async () => (await client.session.create(scope()).catch(() => undefined))?.data,
-    update: async (sessionID, title) => client.session.update({ sessionID, title, ...scope() }),
-    remove: async (sessionID) => client.session.delete({ sessionID, ...scope() }),
-    fork: async (sessionID) => (await client.session.fork({ sessionID, ...scope() }).catch(() => undefined))?.data,
-    revert: async (sessionID) => client.session.revert({ sessionID, ...scope() }),
-    summarize: async (sessionID) => client.session.summarize({ sessionID, ...scope() }),
-    share: async (sessionID) => {
-      const data = (await client.session.share({ sessionID, ...scope() }).catch(() => undefined))?.data
-      return data?.share?.url ? { url: data.share.url } : undefined
-    },
-    unshare: async (sessionID) => client.session.unshare({ sessionID, ...scope() }),
-    init: async (sessionID) => client.session.init({ sessionID, ...scope() }),
-    command: async (sessionID, command, args) =>
-      client.session.command({ sessionID, command, ...(args ? { arguments: args } : {}), ...scope() }),
-    messages: async (sessionID) =>
-      (await client.session.messages({ sessionID, ...scope() }).catch(() => undefined))?.data as
-        | Awaited<ReturnType<typeof client.session.messages>>["data"]
-        | undefined,
-  }
-
-  const showNotice = (message: string) => {
-    clearTimeout(noticeTimer)
-    setCommandNotice(message)
-    noticeTimer = setTimeout(() => setCommandNotice(undefined), 2600)
-  }
-
-  const closeCommandDialog = () => {
-    if (exitResolver) {
-      exitResolver(false)
-      exitResolver = undefined
-    }
-    setCommandDialog(undefined)
-  }
-
-  const commandHost: SessionCommandHost = {
-    clipboard: writeClipboard,
-    download: (filename, content) => {
-      const url = URL.createObjectURL(new Blob([content], { type: "text/markdown" }))
-      const anchor = document.createElement("a")
-      anchor.href = url
-      anchor.download = filename
-      document.body.appendChild(anchor)
-      anchor.click()
-      anchor.remove()
-      URL.revokeObjectURL(url)
-    },
-    notice: showNotice,
-    error: (message) => setError(message),
-    selectSession: (sessionID) => {
-      void selectSession(sessionID)
-    },
-    reload: () => {
-      const sessionID = active()
-      if (sessionID) void loadMessages(sessionID)
-      void loadSessions()
-    },
-    clearSession: () => {
+    if (active() === session.id) {
       setActive(undefined)
       setThread([])
-      setDraft("")
-      setMenu(undefined)
-      turnCache.clear()
-      setCommandDialog(undefined)
-    },
-    rename: (sessionID) => {
-      const current = sessions().find((session) => session.id === sessionID)
-      setCommandDialog({ kind: "rename", sessionID, value: current?.title ?? "" })
-    },
-    openEditor: () => setCommandDialog({ kind: "editor", value: draft() }),
-    confirm: (message) => {
-      // La question est portée par le dialogue ; la promesse n'est résolue que par un clic.
-      void message
-      return new Promise<boolean>((resolve) => {
-        exitResolver = resolve
-        setCommandDialog({ kind: "exit" })
-      })
-    },
-    addActivity: (activity) => setCommandActivities((current) => [...current, activity]),
-    updateActivity: (id, status) =>
-      setCommandActivities((current) => current.map((item) => (item.id === id ? { ...item, status } : item))),
-  }
-
-  /** Une seule porte d'entrée : la ligne saisie est soit une commande, soit un prompt ordinaire. */
-  const dispatchCommand = async (text: string) => {
-    const result = await runCommandLine(text, {
-      sessionID: active(),
-      choices: commandOptions(),
-      transport: commandTransport,
-      host: commandHost,
-    })
-    if (result.ok) setDraft("")
-    return result
-  }
-
-  const commitCommandRename = async (sessionID: string, title: string) => {
-    await client.session.update({ sessionID, title, ...scope() }).catch((cause: unknown) => setError(String(cause)))
+    }
     await loadSessions()
-  }
-
-  const onExitConfirmed = () => {
-    exitResolver?.(true)
-    exitResolver = undefined
-    setCommandDialog(undefined)
-  }
-
-  const onDeleteConfirmed = (sessionID: string) => {
-    const session = sessions().find((item) => item.id === sessionID)
-    setCommandDialog(undefined)
-    if (session) void removeSession(session)
   }
 
   const replyPermission = async (request: PermissionRequest, reply: PermissionReply) => {
@@ -2386,33 +1711,16 @@ export default function App() {
 
   const removeAttachment = (id: string) => setAttachments((current) => current.filter((item) => item.id !== id))
 
-  const send = async (event?: { preventDefault: () => void }, mode: SubmitMode = "send") => {
+  const send = async (event?: { preventDefault: () => void }) => {
     event?.preventDefault()
-    const text = draft().trim()
-    // Une ligne en tête de `/` est une commande de session — jamais un prompt à envoyer au modèle.
-    // `/new` agit même sans session active : le test doit donc précéder le garde-fou.
-    if (text.startsWith("/")) {
-      setMenu(undefined)
-      await dispatchCommand(text)
-      return
-    }
     const sessionID = active()
+    const text = draft().trim()
     const files = attachments()
-    // Une commande d'interface est interceptée **avant** l'envoi : le serveur ne la voit jamais.
-    if (text.startsWith("/") && runSlash(text)) return
     if (!sessionID || (!text && files.length === 0)) return
-    // Un texte qui commence par `/` doit nommer une commande du registre serveur : un nom
-    // inconnu n'est **jamais** envoyé au modèle, même par accident.
-    if (!(await guardCommand(text))) return
     setDraft("")
     setAttachments([])
     setAttachError(undefined)
-    // Le steer est porté par les métadonnées de la partie texte — le protocole du serveur
-    // (`prompt-queue.ts`), pas une simulation côté interface.
-    const parts = [
-      ...(text ? [{ type: "text" as const, text, ...partMetadata(mode) }] : []),
-      ...files.map(buildFilePart),
-    ]
+    const parts = [...(text ? [{ type: "text" as const, text }] : []), ...files.map(buildFilePart)]
     // Le modèle et l'agent partent avec le message : c'est ce qui rend le changement effectif ici et
     // maintenant, sans toucher à la configuration. Absents, le serveur applique son défaut.
     const model = parseModelChoice(composerModel())
@@ -2421,51 +1729,14 @@ export default function App() {
         sessionID,
         parts,
         ...(model ? { model } : {}),
-        ...(activeVariant() ? { variant: activeVariant() } : {}),
         ...(composerAgent() ? { agent: composerAgent() } : {}),
         ...scope(),
       })
-      const result = await client.session
-        .promptAsync({
-          sessionID,
-          parts,
-          ...(model ? { model } : {}),
-          ...(composerAgent() ? { agent: composerAgent() } : {}),
-          ...(variant() ? { variant: variant() } : {}),
-          ...scope(),
-        })
       .catch((cause: unknown) => {
         setError(String(cause))
         return undefined
       })
-    if (result) {
-      await loadMessages(sessionID)
-      // Le retour ne s'affiche qu'après acceptation : dire « queued » d'un message refusé serait un mensonge.
-      const note = deliveryNotice(mode)
-      if (note) flash(note)
-    }
-  }
-
-  /** Entrée pendant le travail : le message est accepté puis mis en file par le serveur. */
-  const queueMessage = () => {
-    if (!draft().trim() && attachments().length === 0) {
-      flash("file d'attente : saisissez un message")
-      return
-    }
-    void send(undefined, "queue")
-  }
-
-  /** Alt+S : la consigne rejoint le tour en cours si le serveur le permet, sinon on le dit. */
-  const steerMessage = () => {
-    if (!working()) {
-      flash("steer : aucun tour en cours — consigne non envoyée")
-      return
-    }
-    if (!draft().trim() && attachments().length === 0) {
-      flash("steer : saisissez une consigne")
-      return
-    }
-    void send(undefined, "steer")
+    if (result) await loadMessages(sessionID)
   }
 
   const applyDirectory = (value: string) => {
@@ -2473,7 +1744,9 @@ export default function App() {
     const trimmed = value.trim()
     if (trimmed) localStorage.setItem(DIR_KEY, trimmed)
     else localStorage.removeItem(DIR_KEY)
-    openHome()
+    setActive(undefined)
+    setThread([])
+    turnCache.clear()
     void loadPath()
     void loadSessions()
     void loadPermissions()
@@ -2522,25 +1795,13 @@ export default function App() {
    */
   let scroller: HTMLDivElement | undefined
   let following = true
-  const [scrollChrome, setScrollChrome] = createSignal({ up: false, thumb: false, progress: 0 })
-  const measureScroll = () => {
-    if (!scroller) return
-    const max = scroller.scrollHeight - scroller.clientHeight
-    setScrollChrome({
-      up: scroller.scrollTop > 8,
-      thumb: max > 4,
-      progress: max > 0 ? Math.min(1, scroller.scrollTop / max) : 0,
-    })
-  }
   const onScroll = () => {
     if (!scroller) return
     following = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40
-    measureScroll()
   }
   createEffect(() => {
     messages()
     if (scroller && following) scroller.scrollTop = scroller.scrollHeight
-    queueMicrotask(measureScroll)
   })
 
   onMount(async () => {
@@ -2551,10 +1812,6 @@ export default function App() {
     await loadPermissions()
     await loadQuestions()
     await loadPlugins()
-    // Le panneau droit lit ses cinq états réels au montage — aucun d'eux n'est fabriqué ici.
-    void loadMcp()
-    void loadPanelConfig()
-    void loadGit()
     // Le catalogue des modèles est payé au montage : le choix du modèle est dans la saisie, donc il
     // doit être prêt avant qu'on écrive. Les agents, eux, attendent la première ouverture (1,5 Mo).
     void loadModelCatalog()
@@ -2568,75 +1825,10 @@ export default function App() {
     // La charpente suit la largeur de fenêtre : le solveur est pur, donc rien à mémoriser ici.
     const onResize = () => setViewport(window.innerWidth)
     window.addEventListener("resize", onResize)
-    /**
-     * Les raccourcis globaux, branchés sur les vraies actions de la page.
-     *
-     * Chaque calque consomme son propre Échap (stopPropagation) avant cette ligne : Échap ferme
-     * d'abord ce qui est ouvert, puis interrompt l'agent s'il travaille. Le `preventDefault` vient
-     * du registre (`shortcuts.ts`) : seuls les raccourcis qui écrasent le navigateur le demandent.
-     */
+    // Échap ferme la feuille de configuration — un panneau modal qui ne se ferme qu'à la souris
+    // piège celui qui l'a ouvert au clavier.
     const onKey = (event: KeyboardEvent) => {
-      // La palette s'ouvre de n'importe où, y compris hors du champ : c'est un geste global.
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
-        event.preventDefault()
-        setPaletteQuery("")
-        setPaletteIndex(0)
-        setPaletteOpen(true)
-        void loadCommands()
-        return
-      }
-      if (event.key === "Escape") {
-        if (paletteOpen()) setPaletteOpen(false)
-        else setConfigOpen(false)
-      const match = matchShortcut(keyState(event), "global")
-      if (!match) return
-      if (match.preventDefault) event.preventDefault()
-      switch (match.id) {
-        case "palette":
-          setPaletteOpen(true)
-          return
-        case "newSession":
-          void createSession()
-          return
-        case "renameSession": {
-          const session = sessions().find((entry) => entry.id === active())
-          if (session) startRename(session)
-          return
-        }
-        case "deleteSession": {
-          const sessionID = active()
-          if (sessionID) setConfirming(sessionID)
-          return
-        }
-        case "interrupt":
-          if (paletteOpen()) {
-            setPaletteOpen(false)
-            return
-          }
-          if (configOpen()) {
-            setConfigOpen(false)
-            return
-          }
-          if (working()) void abortRun()
-          return
-        case "steer":
-          steerMessage()
-          return
-    // Échap ferme la feuille de configuration et la palette — un panneau modal qui ne se ferme
-    // qu'à la souris piège celui qui l'a ouvert au clavier.
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
-        event.preventDefault()
-        openCommand("palette")
-        return
-      }
-      if (event.key === "Escape") {
-        if (command()) {
-          setCommand(undefined)
-          return
-        }
-        setConfigOpen(false)
-      }
+      if (event.key === "Escape") setConfigOpen(false)
     }
     window.addEventListener("keydown", onKey)
     // Debounced search: the list endpoint takes `search`, so the server does the filtering.
@@ -2700,11 +1892,8 @@ export default function App() {
         else if (outcome?.kind === "resync" && sessionID) reloadThread(sessionID)
         if (event.type === "session.status" || event.type === "session.idle") {
           const properties = (event.properties ?? {}) as { sessionID?: string; status?: { type?: string } }
-          const occupe = properties.status?.type === "busy"
-          if (properties.sessionID) {
-            setSessionBusy((current) => ({ ...current, [properties.sessionID!]: occupe }))
-          }
           if (properties.sessionID === active()) {
+            const occupe = properties.status?.type === "busy"
             // Fin d'une série de modifications : l'auto-commit/push est
             // désactivé par défaut et vérifié côté serveur (aucune action sur main).
             if (working() && !occupe && properties.sessionID) {
@@ -2742,7 +1931,6 @@ export default function App() {
     onCleanup(() => {
       clearInterval(healthTimer)
       clearTimeout(searchTimer)
-      clearTimeout(shortcutTimer)
       if (threadFrame !== undefined) cancelAnimationFrame(threadFrame)
       window.removeEventListener("resize", onResize)
       window.removeEventListener("keydown", onKey)
@@ -2760,11 +1948,12 @@ export default function App() {
   const renderItem = (part: Part) => {
     const id = part.id ?? ""
     if (part.type === "text") {
-      return <ConversationParagraph text={part.text ?? ""} synthetic={part.synthetic} ignored={part.ignored} />
+      return <Prose text={part.text ?? ""} synthetic={part.synthetic} ignored={part.ignored} />
     }
     if (part.type === "reasoning") {
       // La durée, pas le volume : `reasoning.time` est renseigné 1 511 fois sur 1 511. Tant que le
-      // serveur ne l'a pas bornée, la durée est **vivante** — elle avance au battement de `tick`.
+      // serveur ne l'a pas bornée, la durée est **vivante** — elle avance au battement de `tick` —
+      // et la ligne porte le spinner (« thinking »). Bornée, elle affiche sa durée (« Thinking »).
       const start = part.time?.start
       const end = part.time?.end
       const live = reasoningLive(part)
@@ -2777,14 +1966,11 @@ export default function App() {
               ? tick() - start
               : undefined
       return (
-        <ThoughtRow
-          duration={formatDuration(duration)}
-          chars={(part.text ?? "").length}
+        <Reasoning
           text={part.text ?? ""}
-          open={Boolean(expanded()[id])}
           live={live}
           durationMs={duration}
-          open={Boolean(expanded()[id]) || thinking()}
+          open={Boolean(expanded()[id])}
           onToggle={() => toggle(id)}
         />
       )
@@ -2795,48 +1981,12 @@ export default function App() {
       const media = partMedia(part)
       return (
         <>
-          <Show when={part.state} fallback={<RunRow name={part.tool ?? "run"} status="pending" output="" open={false} onToggle={() => toggle(id)} />}>
-            {(raw) => {
-              const state = raw() as ToolState
-              const duration = toolDuration(state, tick())
-              const title = toolTitle(state) ?? part.tool ?? ""
-              const diff = fileDiff(state)
-              const delegate = part.tool === "task" || part.tool === "subagent"
-              const status = state.status === "completed" ? "done" : toolStatusLabel(state)
-              const detail = toolDetail(state)
-              const output = detail.output ?? detail.error ?? detail.input ?? ""
-              return (
-                <Show when={diff} fallback={
-                  <Show when={delegate} fallback={
-                    <RunRow
-                      name={title}
-                      status={status}
-                      output={output}
-                      duration={duration}
-                      open={Boolean(expanded()[id])}
-                      onToggle={() => toggle(id)}
-                    />
-                  }>
-                    <DelegateRow
-                      name={title}
-                      running={state.status === "running" || state.status === "pending"}
-                      duration={duration}
-                    />
-                  </Show>
-                }>
-                  {(value) => (
-                    <EditRow
-                      file={title}
-                      additions={value().additions}
-                      deletions={value().deletions}
-                      done={state.status === "completed"}
-                      duration={duration}
-                    />
-                  )}
-                </Show>
-              )
-            }}
-          </Show>
+          <ToolLine
+            tool={part.tool ?? ""}
+            state={part.state as ToolState}
+            open={Boolean(expanded()[id])}
+            onToggle={() => toggle(id)}
+          />
           <For each={media}>{(item) => <Media kind={item.kind} url={item.url} name={item.name} />}</For>
         </>
       )
@@ -2870,13 +2020,13 @@ export default function App() {
   }
 
   /** Le prompt de l'utilisateur : le seul texte qu'il a écrit lui-même, donc la seule surface mise en forme. */
-  const renderPrompt = (part: Part, queued = false) => {
+  const renderPrompt = (part: Part) => {
     if (part.type !== "text") return renderItem(part)
     const text = part.text ?? ""
     // Le bloc d'injections arrive en texte brut, dans le même message que le prompt. On le lit comme
     // une structure et il ne s'affiche **pas** comme si l'utilisateur l'avait écrit.
     const injections = parseInjections(text)
-    if (!injections) return <ConversationUserMessage text={text} queued={queued} />
+    if (!injections) return <UserPrompt text={text} />
     // Les tirs de garde-fous ont leur propre forme : une ligne par tir, avec l'origine en clair.
     // Les passer à `ContextInjections` afficherait « 0 section » — le bloc n'a pas de volumes.
     if (injections.kind === "firings") {
@@ -2905,9 +2055,6 @@ export default function App() {
   const sendFromHome = async (event?: { preventDefault: () => void }) => {
     event?.preventDefault()
     if (!draft().trim() && attachments().length === 0) return
-    // Même garde-fou que dans le compositeur : on ne crée pas une session pour y envoyer
-    // une commande inconnue.
-    if (!(await guardCommand(draft()))) return
     await createSession()
     if (!active()) return
     await send()
@@ -2916,10 +2063,14 @@ export default function App() {
   /**
    * L'accueil, quand **aucune session n'est ouverte**.
    *
-   * C'est l'écran d'ouverture de la maquette validée : salut selon l'heure, mot
-   * d'ordre local qui tourne à chaque ouverture, composeur monté au centre qui
-   * descend à l'envoi, et puces de reprise construites sur les vraies sessions.
-   * Le composant ne fait aucun appel réseau : tout lui est passé en props.
+   * Avant, une phrase — « Pick a session, or start one. » — c'est-à-dire du vide avec une consigne.
+   * Or c'est le premier écran qu'on voit, et l'endroit où l'on écrit son premier message : il doit
+   * porter ce qu'il faut pour **commencer**, pas dire où cliquer.
+   *
+   * Le champ **réutilise les classes du compositeur** (`.composer-field`, `.composer-input`,
+   * `.composer-bar`) : le calque du markdown n'est aligné avec le curseur que parce que les deux
+   * partagent leurs métriques. Les redéclarer ici les ferait dériver dès la première retouche d'un
+   * seul côté.
    */
   const renderHome = () => (
     <div class="home">
@@ -2942,17 +2093,6 @@ export default function App() {
         </div>
 
         <form class="home-composer" onSubmit={(event) => void sendFromHome(event)}>
-          {/* L'accueil est le premier écran : le `/` et le `@` doivent y ouvrir la même liste que
-              dans le compositeur de session, sinon le premier message ne peut rien choisir. */}
-          <Show when={menu() && suggestions().length > 0}>
-            <SuggestMenu
-              rows={suggestions()}
-              active={menuIndex()}
-              label={menu() === "commands" ? "commands" : "files"}
-              onHover={setMenuIndex}
-              onPick={(row) => activateSuggestion(suggestions().indexOf(row), false)}
-            />
-          </Show>
           <div class="composer-field">
             <ComposerMarkup text={draft()} />
             <textarea
@@ -2960,24 +2100,10 @@ export default function App() {
               rows="3"
               placeholder="Describe what you want to build, / commands, @ files"
               value={draft()}
-              ref={(element: HTMLTextAreaElement) => (input = element)}
-              onInput={(event) => {
-                const value = event.currentTarget.value
-                setDraft(value)
-                setHistoryIndex(-1)
-                refreshMenu(value, event.currentTarget.selectionStart)
-              }}
-              onKeyDown={onComposerKey}
-              onKeyUp={(event) => {
-                if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
-                  refreshMenu(draft(), event.currentTarget.selectionStart)
-                }
-              }}
-              onClick={(event) => refreshMenu(draft(), event.currentTarget.selectionStart)}
+              onInput={(event) => setDraft(event.currentTarget.value)}
             />
           </div>
           <Show when={attachError()}>{(message) => <p class="error">{message()}</p>}</Show>
-          <Show when={commandError()}>{(message) => <p class="error">{message()}</p>}</Show>
           <div class="composer-bar">
             <label class="attach" title="Attach files">
               <PlusIcon size={16} />
@@ -2989,110 +2115,50 @@ export default function App() {
                   void addFiles(event.currentTarget.files)
                   // Remis à zéro pour qu'attacher deux fois le même fichier soit possible.
                   event.currentTarget.value = ""
-        <div class="cv-dock">
-          <form class="home-composer cv-composer" onSubmit={(event) => void sendFromHome(event)}>
-            <ComposerSuggestions
-              open={Boolean(menu()) && suggestions().length > 0}
-              entries={suggestions()}
-              active={menuIndex()}
-              label={menu() === "commands" ? "commands" : "files"}
-              onPick={acceptSuggestion}
-              onHover={setMenuIndex}
-            />
-            <div class="composer-field">
-              <ComposerMarkup text={draft()} />
-              <textarea
-                class="composer-input"
-                rows="2"
-                placeholder={COMPOSER_PLACEHOLDER}
-                value={draft()}
-                ref={(element: HTMLTextAreaElement) => (input = element)}
-                onInput={(event) => {
-                  const value = event.currentTarget.value
-                  setDraft(value)
-                  setHistoryIndex(-1)
-                  refreshMenu(value, event.currentTarget.selectionStart)
                 }}
-                onKeyDown={(event) => onComposerKey(event, () => void sendFromHome())}
-                onKeyUp={(event) => {
-                  if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
-                    refreshMenu(draft(), event.currentTarget.selectionStart)
-                  }
-                }}
-                onClick={(event) => refreshMenu(draft(), event.currentTarget.selectionStart)}
+              />
+            </label>
+            {/* Le modèle et l'agent se choisissent **ici** : ils partent avec le premier message, donc
+                les choisir après coup serait les choisir trop tard. */}
+            <div class="composer-picks">
+              <Picker
+                choices={modelOptions()}
+                value={composerModel()}
+                placeholder="Default model"
+                label="model"
+                onOpen={() => void loadModelCatalog()}
+                onChange={setComposerModel}
+              />
+              <Picker
+                choices={agentOptions()}
+                value={composerAgent()}
+                placeholder="Default agent"
+                label="agent"
+                onOpen={() => void loadAgentOptions()}
+                onChange={setComposerAgent}
               />
             </div>
-            <Show when={attachError()}>{(message) => <p class="error">{message()}</p>}</Show>
-            <ComposerControls
-              agents={agentOptions()}
-              agent={composerAgent()}
-              onAgentChange={setComposerAgent}
-              onOpenAgents={() => void loadAgentOptions()}
-              models={modelOptions()}
-              model={composerModel()}
-              onModelChange={setComposerModel}
-              onOpenModels={() => void loadModelCatalog()}
-              variants={variantOptions()}
-              variant={activeVariant()}
-              onVariantChange={setComposerVariant}
-              working={working()}
-              canSend={Boolean(draft().trim()) || attachments().length > 0}
-              onAttach={(files) => void addFiles(files)}
-              onInterrupt={() => void abortRun()}
-            />
-          </form>
-          <ComposerStatusBar
-            agent={agentLabel()}
-            model={modelLabel()}
-            variant={variantLabel()}
-            stats={stats()}
-            contextLimit={modelLimits()[composerModel()]}
-            working={working()}
-            onInterrupt={() => void abortRun()}
-            onTagFiles={tagFiles}
-            onCommands={openCommands}
-          />
-        </div>
+            <span class="spacer" />
+            <button
+              class="send"
+              type="submit"
+              title="Send"
+              aria-label="Send"
+              disabled={!draft().trim() && attachments().length === 0}
+            >
+              <SendIcon />
+            </button>
+          </div>
+        </form>
       </div>
     </div>
-    <OpeningScreen
-      salutation={greeting()}
-      motto={motto()}
-      sessions={sessions()}
-      onResume={(session) => void selectSession(session.id)}
-      draft={draft()}
-      onDraft={setDraft}
-      onSubmit={() => void sendFromHome()}
-      attachments={attachments()}
-      attachError={attachError()}
-      onAttach={(files) => void addFiles(files)}
-      onRemoveAttachment={removeAttachment}
-      directory={directory()}
-      projects={projects()}
-      serverPath={serverPath()}
-      onDirectoryChange={applyDirectory}
-      modelOptions={modelOptions()}
-      agentOptions={agentOptions()}
-      composerModel={composerModel()}
-      composerAgent={composerAgent()}
-      onModelChange={setComposerModel}
-      onAgentChange={setComposerAgent}
-      onModelOpen={() => void loadModelCatalog()}
-      onAgentOpen={() => void loadAgentOptions()}
-    />
   )
 
   const renderTurn = (turn: TurnView, index: number = -1) => (
     <>
       <Show when={turn.prompt.length > 0}>
-        <div data-turn={index} data-ts={timestamps() ? stamp(sessionTimestamp(turn.prompt[0])) || undefined : undefined} classList={{ "ui-stamps": timestamps() }}>
         <Turn role="user" index={index}>
-          <For each={turn.prompt}>{(part) => renderPrompt(
-            part,
-            working() &&
-              turn.id === [...turns()].reverse().find((item) => item.prompt.length > 0)?.id &&
-              turn.id !== servedTurn(turns())?.id,
-          )}</For>
+          <For each={turn.prompt}>{(part) => renderPrompt(part)}</For>
           {/*
             Ce qui **travaille** le dit : une ligne d'attente, avec le spinner, à la place de la ligne
             qui n'est pas encore écrite. Deux phases, dans l'ordre du serveur — « loaded … » tant que
@@ -3116,7 +2182,6 @@ export default function App() {
             </div>
           </Show>
         </Turn>
-        </div>
       </Show>
       <Show when={turn.steps.length > 0 || turnError(turn)}>
         <Turn role="assistant" index={index}>
@@ -3144,47 +2209,10 @@ export default function App() {
   )
 
   /**
-   * Les commandes de la palette pointent toutes sur des actions déjà dans l'interface : la palette
-   * n'invente aucun geste, elle donne un clavier à ceux qui existent.
-   */
-  const paletteCommands = (): PaletteCommand[] => {
-    const session = sessions().find((entry) => entry.id === active())
-    const sessionID = active()
-    return [
-      { id: "new", label: "Nouvelle session", keys: "alt+n", run: () => void createSession() },
-      { id: "search", label: "Rechercher des sessions", hint: "workspaces", run: () => setHeadMode("search") },
-      {
-        id: "rename",
-        label: "Renommer la session courante",
-        keys: "ctrl+r",
-        run: () => {
-          if (session) startRename(session)
-        },
-      },
-      {
-        id: "delete",
-        label: "Supprimer la session courante",
-        keys: "ctrl+d",
-        hint: "confirmation",
-        run: () => {
-          if (sessionID) setConfirming(sessionID)
-        },
-      },
-      { id: "interrupt", label: "Interrompre l'agent", keys: "esc", run: () => void abortRun() },
-      { id: "queue", label: "Mettre le message en file", keys: "enter", run: queueMessage },
-      { id: "steer", label: "Injecter la consigne dans le tour", keys: "alt+s", run: steerMessage },
-      { id: "config", label: "Ouvrir les réglages", run: () => setConfigOpen(true) },
-    ]
-  }
-
-  /**
    * Ce qui est sain ne s'affiche pas. Le bandeau n'existe que si quelque chose est cassé, et
    * disparaît dès que c'est réparé — l'absence est le meilleur indicateur.
    */
   const notice = () => {
-    // Le retour d'un raccourci est prioritaire : c'est la réponse à l'action qu'on vient de faire.
-    const flashMessage = shortcutNotice()
-    if (flashMessage) return { text: flashMessage, bad: false }
     if (!health()?.healthy) return { text: "server unreachable", bad: true }
     if (!stream().connected) return { text: "stream interrupted", bad: false }
     // L'agent travaille : le serveur le dit, on ne le devine pas. Transitoire, donc pas un « badge au
@@ -3193,71 +2221,46 @@ export default function App() {
     return undefined
   }
 
-  const modeCiel = (): ModeCiel => {
-    const valeur = (config() as Record<string, string>)["ciel"] ?? "activé"
-    return valeur as ModeCiel
-  }
-
   return (
-    <>
-      {/* Fond : canvas derrière la charpente, vignettage CSS statique. Les
-          colonnes latérales gardent leur fond opaque ; la colonne centrale
-          transparente laisse voir les étoiles. Aucun contenu, aria-hidden. */}
-      <SkyCanvas mode={skyMode()} />
-      <div class="layout" style={layoutStyle()}>
-        <aside class="rail">
     <div class="layout" style={layoutStyle()}>
       <aside class="rail glass-rail">
-      {/* Le ciel étoilé est derrière toute l'interface : il ne bloque aucun clic. */}
-      <CielEtoile mode={modeCiel()} />
-
-      <aside class="rail">
         <div class="grip" onPointerDown={startSidebarDrag} />
 
-        <SidebarLogo />
-
-        <div class="rail-new">
-          <SidebarNewSession onClick={() => void createSession()} />
+        {/* Le nom du produit. Le nom est en discussion — « opencodev2 » évoque un agent de codage,
+            pas un généraliste : on garde la place, sans inventer de marque. */}
+        <div class="rail-head">
+          <span class="wordmark">opencodev2</span>
+          <span class="wordmark-badge">HARNESS</span>
         </div>
 
+        {/* 1 — Le geste le plus fréquent, donc en premier et sans clic. */}
+        <div class="rail-new">
+          {/* Reproduit de DSH : un bouton **plein, pleine largeur, libellé centré**, avec l'icône
+              **avant** le texte. Le nôtre portait le signe à gauche et le mot collé à gauche sous un
+              filet — trois écarts pour un même bouton. */}
+          <button class="new-session" title="Start an empty conversation" onClick={() => void createSession()}>
+            <PlusIcon size={15} />
+            <span>New Session</span>
+          </button>
+        </div>
+
+        {/* Les plugins, en **une** entrée qui ouvre. Mesuré le 2026-10-14 : les lignes par plugin
+            portaient toutes la même icône générique et n'ouvraient rien (`onRun` jamais fourni) —
+            une liste de noms sans action. La règle : seuls les plugins qui ont un panneau se
+            montrent ici ; aucun n'en a aujourd'hui, donc l'entrée mène là où ils se configurent. */}
+        <Show when={pluginEntries(plugins()).length > 0}>
+          <div class="rail-plugins">
+            <button class="rail-entry" title="Plugins: add or remove one" onClick={openPlugins}>
+              <PluginIcon size={16} />
+              <span class="rail-entry-label">Plugins</span>
+            </button>
+          </div>
+        </Show>
+
+        {/* B — Workspaces : la seule partie qui défile. Le libellé **nomme** le groupe, comme dans
+            la référence : sans lui, la recherche flottait au-dessus d'une liste de dossiers dont
+            rien ne disait ce qu'ils étaient. */}
         <div class="rail-workspaces">
-          <SidebarActions
-            query={query()}
-            headDraft={headDraft()}
-            searchOpen={headMode() === "search"}
-            addOpen={headMode() === "add"}
-            historyOpen={historyOpen()}
-            onQuery={setQuery}
-            onHeadDraft={setHeadDraft}
-            onSearch={() => {
-              setHistoryOpen(false)
-              setHeadDraft("")
-              setHeadMode(headMode() === "search" ? "none" : "search")
-            }}
-            onAddFolder={() => {
-              setHistoryOpen(false)
-              setQuery("")
-              setHeadDraft("")
-              setHeadMode(headMode() === "add" ? "none" : "add")
-            }}
-            onHistory={() => {
-              setHeadMode("none")
-              setHistoryOpen(!historyOpen())
-            }}
-            onCollapse={toggleSidebar}
-            onAddSubmit={() => {
-              const path = headDraft().trim()
-              setHeadMode("none")
-              setHeadDraft("")
-              if (path) applyDirectory(path)
-            }}
-            onEscape={() => {
-              setHeadMode("none")
-              setHeadDraft("")
-              setQuery("")
-              setHistoryOpen(false)
-            }}
-          />
           {/* La ligne du libellé porte les **deux gestes de premier niveau** — chercher, ajouter —
               et devient le champ correspondant. Au repos elle n'est qu'un libellé : ce qui est rare
               ne s'affiche pas (§8), et ces deux fonctions se trouvent là où on les cherche. */}
@@ -3279,8 +2282,6 @@ export default function App() {
                   if (path) applyDirectory(path)
                 }
                 if (event.key === "Escape") {
-                  // Ce champ consomme Échap : le global ne doit pas interrompre l'agent par-dessus.
-                  event.stopPropagation()
                   // Fermer un filtre le retire aussi : une liste filtrée sans champ visible ne
                   // dirait plus pourquoi elle est courte.
                   setHeadMode("none")
@@ -3331,6 +2332,10 @@ export default function App() {
             </span>
           </div>
 
+          {/* Le mode « ajouter » **est** la demande de choisir un dossier : le parcours s'affiche
+              donc ici, et il n'y a pas de troisième bouton à ajouter à la ligne du libellé. On
+              regarde les dossiers au lieu de taper leur chemin — et le chemin tapé reste possible
+              par le champ au-dessus, pour qui le connaît déjà. */}
           <Show when={headMode() === "add"}>
             <FolderBrowser
               start={directory() || serverPath() || ""}
@@ -3341,67 +2346,11 @@ export default function App() {
             />
           </Show>
 
-          <Show when={historyOpen()}>
-            <SidebarHistory
-              sessions={recentSessions(sessions())}
-              now={now()}
-              onSelect={(id) => {
-                setHistoryOpen(false)
-                void selectSession(id)
-              }}
-            />
-          </Show>
-
           <div class="rows">
-            <For each={groupByWorkspace(sessions(), projects(), directory())}>
+          <For each={groupByWorkspace(sessions(), projects(), directory())}>
               {(group) => {
                 const split = () => splitSessions(group.sessions, Boolean(moreOpen()[group.key]))
                 return (
-                  <>
-                    <SidebarFolder
-                      label={group.label}
-                      hint={group.hint}
-                      time={relativeTime(groupLatestTime(group), now())}
-                      open={groupOpen(group.key)}
-                      current={group.current}
-                      renaming={renamingProject() === group.key}
-                      menuOpen={wsMenu() === group.key}
-                      onToggle={() => toggleGroup(group.key)}
-                      onNew={() => newSessionIn(group.hint)}
-                      onMenu={() => setWsMenu(wsMenu() === group.key ? undefined : group.key)}
-                      onRename={() => startRenameProject(group)}
-                    >
-                      <input
-                        class="rename"
-                        autofocus
-                        value={projectDraft()}
-                        onInput={(event) => setProjectDraft(event.currentTarget.value)}
-                        onBlur={() => void commitProjectRename()}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") void commitProjectRename()
-                          if (event.key === "Escape") setRenamingProject(undefined)
-                        }}
-                      />
-                    </SidebarFolder>
-                    <Show when={groupOpen(group.key)}>
-                      <For each={split().shown}>
-                        {(session) => (
-                          <Show
-                            when={renaming() === session.id}
-                            fallback={
-                              <SidebarSession
-                                title={session.title || "(untitled)"}
-                                hint={[
-                                  session.title || "(untitled)",
-                                  ...sessionDetails(session).map((line) => `${line.label} : ${line.value}`),
-                                ].join("\n")}
-                                time={relativeTime(sessionTimestamp(session), now())}
-                                busy={Boolean(sessionBusy()[session.id])}
-                                active={session.id === active()}
-                                onSelect={() => {
-                                  setMenuOpen(undefined)
-                                  void selectSession(session.id)
-                                }}
                 <>
                   <WorkspaceGroup
                   label={group.label}
@@ -3422,10 +2371,7 @@ export default function App() {
                     onBlur={() => void commitProjectRename()}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") void commitProjectRename()
-                      if (event.key === "Escape") {
-                        event.stopPropagation()
-                        setRenamingProject(undefined)
-                      }
+                      if (event.key === "Escape") setRenamingProject(undefined)
                     }}
                   />
                 </WorkspaceGroup>
@@ -3466,8 +2412,7 @@ export default function App() {
                                   </button>
                                 }
                               >
-                                <span class="row-actions">
-                                <span                                     class="row-menu glass-menu">
+                                <span class="row-menu glass-menu">
                                   <button
                                     class="row-menu-item"
                                     onClick={(event) => {
@@ -3479,89 +2424,41 @@ export default function App() {
                                     Rename
                                   </button>
                                   <Show
-                                    when={menuOpen() === session.id}
+                                    when={confirming() === session.id}
                                     fallback={
                                       <button
-                                        class="ghost row-menu-trigger"
-                                        title="Actions"
-                                        aria-label="Session actions"
+                                        class="row-menu-item danger"
                                         onClick={(event) => {
                                           event.stopPropagation()
-                                          setMenuOpen(session.id)
+                                          setConfirming(session.id)
                                         }}
                                       >
-                                        …
+                                        Delete
                                       </button>
                                     }
                                   >
-                                    <span class="row-menu">
-                                      <button
-                                        class="row-menu-item"
-                                        onClick={(event) => {
-                                          event.stopPropagation()
-                                          setMenuOpen(undefined)
-                                          startRename(session)
-                                        }}
-                                      >
-                                        Rename
-                                      </button>
-                                      <Show
-                                        when={confirming() === session.id}
-                                        fallback={
-                                          <button
-                                            class="row-menu-item danger"
-                                            onClick={(event) => {
-                                              event.stopPropagation()
-                                              setConfirming(session.id)
-                                            }}
-                                          >
-                                            Delete
-                                          </button>
-                                        }
-                                      >
-                                        <button
-                                          class="row-menu-item danger"
-                                          onClick={(event) => {
-                                            event.stopPropagation()
-                                            setMenuOpen(undefined)
-                                            void removeSession(session)
-                                          }}
-                                        >
-                                          Confirm delete
-                                        </button>
-                                        <button
-                                          class="row-menu-item"
-                                          onClick={(event) => {
-                                            event.stopPropagation()
-                                            setConfirming(undefined)
-                                            setMenuOpen(undefined)
-                                          }}
-                                        >
-                                          Cancel
-                                        </button>
-                                      </Show>
-                                    </span>
+                                    <button
+                                      class="row-menu-item danger"
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        setMenuOpen(undefined)
+                                        void removeSession(session)
+                                      }}
+                                    >
+                                      Confirm delete
+                                    </button>
+                                    <button
+                                      class="row-menu-item"
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        setConfirming(undefined)
+                                        setMenuOpen(undefined)
+                                      }}
+                                    >
+                                      Cancel
+                                    </button>
                                   </Show>
                                 </span>
-                              </SidebarSession>
-                            }
-                          >
-                            <input
-                              class="rename"
-                              autofocus
-                              value={renameDraft()}
-                              onInput={(event) => setRenameDraft(event.currentTarget.value)}
-                              onBlur={commitRename}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") void commitRename()
-                                if (event.key === "Escape") setRenaming(undefined)
-                              }}
-                            />
-                          </Show>
-                        )}
-                      </For>
-                      <Show when={split().hidden > 0}>
-                        <SidebarReadMore hidden={split().hidden} expanded={false} onToggle={() => toggleMore(group.key)} />
                               </Show>
                             </span>
                           </SessionRow>
@@ -3575,75 +2472,71 @@ export default function App() {
                           onBlur={commitRename}
                           onKeyDown={(event) => {
                             if (event.key === "Enter") void commitRename()
-                            if (event.key === "Escape") {
-                              event.stopPropagation()
-                              setRenaming(undefined)
-                            }
+                            if (event.key === "Escape") setRenaming(undefined)
                           }}
                         />
                       </Show>
-                      <Show when={Boolean(moreOpen()[group.key]) && group.sessions.length > SESSION_LIMIT}>
-                        <SidebarReadMore hidden={0} expanded={true} onToggle={() => toggleMore(group.key)} />
-                      </Show>
-                    </Show>
-                  </>
+                    )}
+                  </For>
+                  <Show when={split().hidden > 0}>
+                    <ShowMore hidden={split().hidden} expanded={false} onToggle={() => toggleMore(group.key)} />
+                  </Show>
+                  <Show when={Boolean(moreOpen()[group.key]) && group.sessions.length > SESSION_LIMIT}>
+                    <ShowMore hidden={0} expanded={true} onToggle={() => toggleMore(group.key)} />
+                  </Show>
+                </Show>
+              </>
                 )
               }}
-            </For>
+          </For>
           </div>
 
-          {/* Panneau « Dépôt » — état Git du dépôt lié et actions sûres.
-              Sa visibilité est pilotée par le réglage, source de vérité unique. */}
-          <Show when={afficherDepot()}>
-            <GitPanel lang={langueInterface()} />
-          </Show>
+          {/* Panneau « Dépôt » — état Git du dépôt lié et actions sûres. */}
+          <GitPanel />
+
+          {/* Panneau « Ressources » — santé machine compacte (mémoire, démon, évaluations). */}
+          <RessourcesPanel compact />
         </div>
 
-        <SidebarFooter
-          archivedOpen={archivedOpen()}
-          archivedCount={0}
-          onArchived={() => setArchivedOpen(!archivedOpen())}
-          onServer={openConfig}
-        >
-          <Show when={archivedOpen()}>
-            <div class="side-history-empty">No archived-session endpoint is exposed by the server.</div>
-          </Show>
-        </SidebarFooter>
+        {/* 4 — Le pied : les **deux accès**, et rien d'autre.
+            Le sélecteur de dossier est retiré — la ligne « Workspaces » ajoute déjà n'importe quel
+            dossier, et deux contrôles pour un même geste font douter de celui qui agit ; le dossier
+            de travail reste **dit** par le workspace coché, au-dessus.
+            Les deux boutons portent une icône **et** le patron de bouton du rail : sans fond ni
+            filet un mot ne se lit pas comme un bouton, et un mot seul ne dit pas ce qu'il ouvre. */}
+        <div class="rail-foot">
+          <span class="foot-row">
+            <button
+              class="rail-button"
+              classList={{ active: configOpen() }}
+              title="Settings: defaults, providers, agents, MCP"
+              onClick={openConfig}
+            >
+              <GearIcon size={16} />
+              <span>settings</span>
+            </button>
+          </span>
+        </div>
       </aside>
 
       {/* `busy` nomme l'état pour le CSS : c'est lui qui autorise un mouvement dans le fil (le
           curseur de la prose en cours), et rien au repos. */}
       <main class="thread" classList={{ busy: working() }}>
-        <ConversationHeader
-          title={sessions().find((item) => item.id === active())?.title ?? "New session"}
-          view={view()}
-          working={working()}
-          onBack={() => {
-            setActive(undefined)
-            setThread([])
-            turnCache.clear()
-          }}
-          onGoal={() => setDrawerOpen(!drawerOpen())}
-          onView={(next) => {
-            setView(next)
-            if (next === "logs") void loadToolSchemas()
-          }}
-          onConfig={openConfig}
-        />
-        <ScrollChrome
-          up={scrollChrome().up}
-          thumb={scrollChrome().thumb}
-          progress={scrollChrome().progress}
-          onUp={() => scroller?.scrollTo({ top: 0, behavior: "smooth" })}
-        />
-        <Show when={notice()}>
-          {(state) => (
-            <div class="thread-head">
-              <span class="notice" classList={{ bad: state().bad }}>
-                {state().text}
-              </span>
-            </div>
-          )}
+        <Show when={columns().sidebar === 0 || notice()}>
+          <div class="thread-head">
+            <Show when={columns().sidebar === 0}>
+              <button class="ghost" title="Show sessions" onClick={toggleSidebar}>
+                ☰
+              </button>
+            </Show>
+            <Show when={notice()}>
+              {(state) => (
+                <span class="notice" classList={{ bad: state().bad }}>
+                  {state().text}
+                </span>
+              )}
+            </Show>
+          </div>
         </Show>
 
         {/* Onglets du panneau — Conversation / Config / Logs (maquette §Onglets). Lequel que soit
@@ -3694,14 +2587,19 @@ export default function App() {
             onReload={() => void loadConfigTab()}
           />
         </Show>
-        <div class="thread-head">
-          <Show when={columns().sidebar === 0}>
-            <button class="ghost" title="Show sessions" onClick={toggleSidebar}>
-              ☰
-        <Show
-          when={active()}
-          fallback={<div class="accueil-couche"><EcranAccueil />{renderHome()}</div>}
-        >
+
+        <Show when={panelTab() === "logs"}>
+          <LogsTab
+            entries={logEntries() as LogEntry[]}
+            connected={stream().connected}
+            reconnects={stream().reconnects}
+            lastError={stream().lastError}
+            onClear={() => setLogEntries([])}
+          />
+        </Show>
+
+        <Show when={panelTab() === "conv"}>
+        <Show when={active()} fallback={<div class="accueil-couche"><EcranAccueil />{renderHome()}</div>}>
           {/* La barre des **vues**, au-dessus du chat. Elle commute le contenu du panneau principal
               — la conversation ou le journal — comme les dialogues du TUI. Elle est ici, et non dans
               le rail, parce que c'est le contenu du chat qu'elle remplace : on la cherche là où l'on
@@ -3721,38 +2619,7 @@ export default function App() {
             >
               Trajectory
             </button>
-          </Show>
-          <Show when={notice()}>
-            {(state) => (
-              <span class="notice" classList={{ bad: state().bad }}>
-                {state().text}
-              </span>
-            )}
-          </Show>
-          {/* La porte du panneau droit vit ici, comme dans la maquette : en tête du fil. */}
-          <button
-            class="ghost rp-toggle"
-            title={panelOpen() ? "Hide details panel" : "Show details panel"}
-            aria-label={panelOpen() ? "Hide details panel" : "Show details panel"}
-            aria-pressed={panelOpen()}
-            onClick={() => setPanelOpen((open) => !open)}
-          >
-            ▤
-          </button>
-        </div>
-
-        <Show when={panelTab() === "logs"}>
-          <LogsTab
-            entries={logEntries() as LogEntry[]}
-            connected={stream().connected}
-            reconnects={stream().reconnects}
-            lastError={stream().lastError}
-            onClear={() => setLogEntries([])}
-          />
-        </Show>
-
-        <Show when={panelTab() === "conv"}>
-        <Show when={active()} fallback={renderHome()}>
+          </nav>
           <Show when={view() === "logs"}>
             {/* La vue **Trajectory**, reprise de la capture de DSH : barre d'outils, diagramme en
                 pistes, puis la liste des événements — badge, contenu, résultat. */}
@@ -3762,22 +2629,19 @@ export default function App() {
             {/* Le **journal brut** — ce que la page a réellement reçu. Il vivait dans le tiroir avec
                 les statistiques, retirées le 2026-10-15 ; sa place est ici, où la cible §4 le met :
                 la vue Logs est le seul endroit qu'on ouvre en se demandant « il ne se passe rien ? ». */}
-            <CompteurFps />
             <details class="log-events">
               <summary>Raw events ({logEntries().length})</summary>
               <Show when={logEntries().length > 0} fallback={<p class="log-empty">No events received yet.</p>}>
-                <ListeLongue
-                  class="log-list"
-                  elements={[...logEntries()].reverse()}
-                  hauteurLigne={28}
-                  hauteurVue={480}
-                  renduLigne={(entry) => (
-                    <div class="log-row">
-                      <span class="log-time">{new Date(entry.at).toLocaleTimeString()}</span>
-                      <span class="log-type">{entry.type}{entry.note ? ` → ${entry.note}` : ""}</span>
-                    </div>
-                  )}
-                />
+                <ul class="log-list">
+                  <For each={[...logEntries()].reverse()}>
+                    {(entry) => (
+                      <li class="log-row">
+                        <span class="log-time">{new Date(entry.at).toLocaleTimeString()}</span>
+                        <span class="log-type">{entry.type}{entry.note ? ` → ${entry.note}` : ""}</span>
+                      </li>
+                    )}
+                  </For>
+                </ul>
               </Show>
             </details>
           </Show>
@@ -3787,11 +2651,7 @@ export default function App() {
               <Show when={error()}>
                 <p class="error">{error()}</p>
               </Show>
-              <Show when={commandNotice()}>
-                <p class="notice" role="status">{commandNotice()}</p>
-              </Show>
               <For each={turns()}>{(turn, index) => renderTurn(turn, index())}</For>
-              <CommandActivityLines activities={commandActivities()} />
 
               {/* La seule écriture du fil : l'agent est bloqué tant qu'il n'a pas sa réponse. */}
               <Show when={activeQuestion()}>
@@ -3829,8 +2689,6 @@ export default function App() {
             <TodoList todos={todos()} />
           </Show>
 
-          <form class="composer" onSubmit={send}>
-            <div class="composer-inner cv-composer">
           <form class="composer glass-composer" onSubmit={send}>
             <div class="composer-inner">
               <Show when={attachments().length > 0}>
@@ -3850,36 +2708,39 @@ export default function App() {
                 </ul>
               </Show>
               <Show when={attachError()}>{(message) => <p class="error">{message()}</p>}</Show>
-              <Show when={commandError()}>{(message) => <p class="error">{message()}</p>}</Show>
               {/* Le champ et son calque, dans une même boîte : le calque est **dessous**, à métriques
                   identiques, et le texte du champ est transparent. Le champ reste un `textarea` — le
                   seul contrôle qui garde un curseur, une sélection et le copier-coller du système. */}
               {/* La liste des suggestions, **au-dessus** du champ : c'est le clavier qui la pilote,
                   donc elle reste dans la même boîte et ne fait pas quitter le champ des yeux. */}
               <Show when={menu() && suggestions().length > 0}>
-                <SuggestMenu
-                  rows={suggestions()}
-                  active={menuIndex()}
-                  label={menu() === "commands" ? "commands" : "files"}
-                  onHover={setMenuIndex}
-                  /* Un clic complète, comme `Tab` : `Entrée` reste le geste qui exécute. */
-                  onPick={(row) => activateSuggestion(suggestions().indexOf(row), false)}
-                />
+                <div class="suggest" role="listbox" aria-label={menu() === "commands" ? "commands" : "files"}>
+                  <For each={suggestions()}>
+                    {(entry, index) => (
+                      <button
+                        type="button"
+                        class="suggest-row"
+                        classList={{ "is-active": menuIndex() === index() }}
+                        role="option"
+                        aria-selected={menuIndex() === index()}
+                        onMouseEnter={() => setMenuIndex(index())}
+                        onClick={() => acceptSuggestion(index())}
+                      >
+                        <span class="suggest-name">{entry.name}</span>
+                        <Show when={entry.detail}>
+                          {(detail) => <span class="suggest-detail">{detail()}</span>}
+                        </Show>
+                      </button>
+                    )}
+                  </For>
+                </div>
               </Show>
-              <ComposerSuggestions
-                open={Boolean(menu()) && suggestions().length > 0}
-                entries={suggestions()}
-                active={menuIndex()}
-                label={menu() === "commands" ? "commands" : "files"}
-                onPick={acceptSuggestion}
-                onHover={setMenuIndex}
-              />
               <div class="composer-field">
                 <ComposerMarkup text={draft()} />
                 <textarea
                   class="composer-input"
                   rows="2"
-                  placeholder={COMPOSER_PLACEHOLDER}
+                  placeholder="Message, / commands, @ files"
                   value={draft()}
                   ref={(element: HTMLTextAreaElement) => (input = element)}
                   onInput={(event) => {
@@ -3900,65 +2761,58 @@ export default function App() {
                   onClick={(event) => refreshMenu(draft(), event.currentTarget.selectionStart)}
                 />
               </div>
-              <ComposerControls
-                agents={agentOptions()}
-                agent={composerAgent()}
-                onAgentChange={setComposerAgent}
-                onOpenAgents={() => void loadAgentOptions()}
-                models={modelOptions()}
-                model={composerModel()}
-                onModelChange={setComposerModel}
-                onOpenModels={() => void loadModelCatalog()}
-                variants={variantOptions()}
-                variant={activeVariant()}
-                onVariantChange={setComposerVariant}
-                working={working()}
-                canSend={Boolean(draft().trim()) || attachments().length > 0}
-                onAttach={(files) => void addFiles(files)}
-                onInterrupt={() => void abortRun()}
-              />
+              <div class="composer-bar">
+                <label class="attach" title="Attach files">
+                  <PlusIcon size={16} />
+                  <input
+                    class="hidden-input"
+                    type="file"
+                    multiple
+                    onChange={(event) => {
+                      void addFiles(event.currentTarget.files)
+                      // Remis à zéro pour qu'attacher deux fois le même fichier soit possible.
+                      event.currentTarget.value = ""
+                    }}
+                  />
+                </label>
+                {/* Les deux choix du prochain message. Le modèle est déjà là ; les agents arrivent à
+                    la première ouverture — 1,5 Mo ne se paient pas au repos. */}
+                <div class="composer-picks">
+                  <Picker
+                    choices={modelOptions()}
+                    value={composerModel()}
+                    placeholder="Default model"
+                    label="model"
+                    onOpen={() => void loadModelCatalog()}
+                    onChange={setComposerModel}
+                  />
+                  <Picker
+                    choices={agentOptions()}
+                    value={composerAgent()}
+                    placeholder="Default agent"
+                    label="agent"
+                    onOpen={() => void loadAgentOptions()}
+                    onChange={setComposerAgent}
+                  />
+                </div>
+                <span class="spacer" />
+                <button
+                  class="send"
+                  type="submit"
+                  title="Send"
+                  aria-label="Send"
+                  disabled={!draft().trim() && attachments().length === 0}
+                >
+                  <SendIcon />
+                </button>
+              </div>
             </div>
             <ComposerStats stats={stats()} contextLimit={modelLimits()[composerModel()]} working={working()} />
-            {/* Les raccourcis du tour en cours, dits pendant qu'ils s'appliquent (maquette `status`). */}
-            <Show when={working()}>
-              <div class="shortcut-hints" aria-label="Raccourcis pendant le travail">
-                <span><kbd>esc</kbd> interrompre</span>
-                <span><kbd>enter</kbd> file d'attente</span>
-                <span><kbd>alt+s</kbd> steer</span>
-              </div>
-            </Show>
-            <ComposerStatusBar
-              agent={agentLabel()}
-              model={modelLabel()}
-              variant={variantLabel()}
-              stats={stats()}
-              contextLimit={modelLimits()[composerModel()]}
-              working={working()}
-              onInterrupt={() => void abortRun()}
-              onTagFiles={tagFiles}
-              onCommands={openCommands}
-            />
           </form>
           </Show>
         </Show>
         </Show>
       </main>
-
-      {/* Le panneau droit « comme le CLI » : cinq sections lues sur les signaux réels de la session. */}
-      <RightPanel
-        open={panelOpen()}
-        contract={contract()}
-        stats={stats()}
-        contextLimit={modelLimits()[composerModel()]}
-        mcp={mcp()}
-        lsp={typeof config().lsp === "boolean" ? { lsp: config().lsp } : undefined}
-        todos={todos()}
-        folder={folderLabel()}
-        branch={gitStatus()?.branch ?? ""}
-        version={health()?.version}
-        onGoalAction={goalAction}
-        onSaveContract={saveContract}
-      />
 
       <aside class="side" classList={{ open: drawerOpen() }}>
         <div class="side-inner">
@@ -3984,10 +2838,6 @@ export default function App() {
           </Show>
         </div>
       </aside>
-
-      <Show when={paletteOpen()}>
-        <ShortcutPalette commands={paletteCommands()} onClose={() => setPaletteOpen(false)} />
-      </Show>
 
       <Show when={configOpen()}>
         <SettingsSheet
@@ -4119,87 +2969,8 @@ export default function App() {
               onRemove={(spec) => void removePlugin(spec)}
             />
           </Show>
-
-          {/* Le ciel : trois niveaux, préférence locale persistée — rangée à côté
-              des autres préférences de `general`, sans huitième section. */}
-          <Show when={settingsSection() === "general"}>
-            <SkySection mode={skyMode()} onChange={changeSkyMode} />
-          {/* Préférences d'interface : stockage local, pas une clé Config (les 37 clés
-              mesurées du serveur sont les seules que `SETTING_SPECS` peut porter). */}
-          <Show when={settingsSection() === "general"}>
-            <div class="set-block">
-              <h3 class="set-title">Repository panel</h3>
-              <div class="set-row">
-                <label class="set-label">Show repository panel</label>
-                <div class="set-control">
-                  <input
-                    type="checkbox"
-                    checked={afficherDepot()}
-                    aria-label="Show repository panel"
-                    onInput={() => basculerDepot()}
-                  />
-                </div>
-              </div>
-              <div class="set-row">
-                <label class="set-label">Panel language</label>
-                <div class="set-control">
-                  <select
-                    aria-label="Panel language"
-                    value={langueInterface()}
-                    onChange={(e) => choisirLangue(e.currentTarget.value === "en" ? "en" : "fr")}
-                  >
-                    <option value="fr">French</option>
-                    <option value="en">English</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </Show>
         </SettingsSheet>
       </Show>
-
-      {/* La palette `ctrl+p` — les mêmes commandes que le `/`, avec son propre filtre et son
-          propre clavier. Elle vit à la racine pour couvrir toute la page, y compris le rail. */}
-      <Show when={paletteOpen()}>
-        <CommandPalette
-          rows={paletteItems()}
-          query={paletteQuery()}
-          active={paletteIndex()}
-          onQuery={(value) => {
-            setPaletteQuery(value)
-            setPaletteIndex(0)
-          }}
-          onActive={setPaletteIndex}
-          onMove={(key) => {
-            const next = moveMenuIndex(paletteIndex(), paletteItems().length, key)
-            if (next !== undefined) setPaletteIndex(next)
-          }}
-          onPick={(row) => {
-            if (row.command) executeCommand(row.command)
-          }}
-          onClose={() => setPaletteOpen(false)}
-        />
-      </Show>
-      <SessionCommandDialogs
-        dialog={commandDialog()}
-        onClose={closeCommandDialog}
-        onRename={(sessionID, title) => void commitCommandRename(sessionID, title)}
-        onExit={onExitConfirmed}
-        onDelete={onDeleteConfirmed}
-        onEditorSave={(text) => {
-          setDraft(text)
-          setCommandDialog(undefined)
-          input?.focus()
-        }}
-      {/* Les dialogues de commandes — un seul hôte pour les 19 commandes, rendu au-dessus de tout. */}
-      <CommandHost
-        command={command()}
-        data={commandData()}
-        onClose={() => setCommand(undefined)}
-        onPick={pickCommand}
-        onToggle={toggleCommand}
-      />
     </div>
-    </>
   )
 }

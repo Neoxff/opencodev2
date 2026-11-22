@@ -116,25 +116,6 @@ describe("GitPanel", () => {
     dispose()
   })
 
-  test("erreur connue au chargement : jamais de texte de progression (§2.5)", async () => {
-    vi.mocked(gitApi.status).mockRejectedValue(new ErreurGitApi("NON_FAST_FORWARD", "branches divergentes", 409))
-    const { container, dispose } = mount()
-    await flush()
-    expect(container.textContent).not.toContain("Chargement du dépôt…")
-    expect(container.querySelector('[role="alert"]')).not.toBeNull()
-    expect(container.textContent).toContain("Branches divergentes : fusion manuelle nécessaire.")
-    expect(container.querySelector('button[aria-label="Réessayer"]')).not.toBeNull()
-    expect(container.querySelector(".git-compteurs")).toBeNull()
-    dispose()
-  })
-
-  test("info-bulle de branche courante (§2.2)", async () => {
-    const { container, dispose } = mount()
-    await flush()
-    expect(container.querySelector(".git-branche")?.getAttribute("title")).toBe("Branche courante")
-    dispose()
-  })
-
   test("état divergent après un pull refusé, avec message court et action", async () => {
     vi.mocked(gitApi.pull).mockRejectedValue(new ErreurGitApi("NON_FAST_FORWARD", "branches divergentes", 409))
     const { container, dispose } = mount()
@@ -149,46 +130,6 @@ describe("GitPanel", () => {
     dispose()
   })
 
-  test("l'état divergent sans statut montre le message court et une action, pas de chargement", async () => {
-    vi.mocked(gitApi.status).mockRejectedValue(new ErreurGitApi("NON_FAST_FORWARD", "branches divergentes", 409))
-    const { container, dispose } = mount()
-    await flush()
-    expect(container.querySelector(".git-panel")?.getAttribute("data-etat")).toBe("divergent")
-    expect(container.textContent).toContain("Branches divergentes : fusion manuelle nécessaire.")
-    expect(container.querySelector('button[aria-label="Réessayer"]')).not.toBeNull()
-    expect(container.textContent).not.toContain("Chargement du dépôt…")
-    dispose()
-  })
-
-  test("état a-jour quand le dépôt est synchronisé", async () => {
-    vi.mocked(gitApi.status).mockResolvedValue({ ...statut, ahead: 0, behind: 0, modified: [] })
-    const { container, dispose } = mount()
-    await flush()
-    expect(container.querySelector(".git-panel")?.getAttribute("data-etat")).toBe("a-jour")
-    dispose()
-  })
-
-  test("état en-avance quand le dépôt est à l'avance", async () => {
-    vi.mocked(gitApi.status).mockResolvedValue({ ...statut, ahead: 2, behind: 0 })
-    const { container, dispose } = mount()
-    await flush()
-    expect(container.querySelector(".git-panel")?.getAttribute("data-etat")).toBe("en-avance")
-    dispose()
-  })
-
-  test("état en-retard quand le dépôt est en retard", async () => {
-    vi.mocked(gitApi.status).mockResolvedValue({ ...statut, ahead: 0, behind: 3 })
-    const { container, dispose } = mount()
-    await flush()
-    expect(container.querySelector(".git-panel")?.getAttribute("data-etat")).toBe("en-retard")
-    dispose()
-  })
-
-  test("état conflit quand la branche a des conflits de fusion", async () => {
-    vi.mocked(gitApi.status).mockRejectedValue(new ErreurGitApi("CONFLIT", "conflit", 409))
-    const { container, dispose } = mount()
-    await flush()
-    expect(container.querySelector(".git-panel")?.getAttribute("data-etat")).toBe("conflit")
   test("Échap annule la confirmation en cours", async () => {
     const { container, dispose } = mount()
     await flush()

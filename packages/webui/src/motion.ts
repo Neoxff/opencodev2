@@ -13,11 +13,6 @@
 export type Duree = "instantane" | "rapide" | "normal" | "lent";
 
 export const DUREE: Record<Duree, number> = {
- * Moteur de mouvement — tokens partagés (Build 3).
- * Fichier recréé sur cette branche car il n'existe pas sur main.
- */
-
-export const DUREE = {
   instantane: 90,
   rapide: 160,
   normal: 240,
@@ -33,11 +28,6 @@ export const COURBE = {
 } as const;
 
 /** Échelonnage : 30–40 ms par élément, 8 éléments maximum animés à la fois. */
-export const COURBE = {
-  sortieDouce: "cubic-bezier(0.22, 1, 0.36, 1)",
-  entreeSortie: "cubic-bezier(0.4, 0, 0.2, 1)",
-} as const;
-
 export const ECHELONNAGE = {
   delaiParElement: 35,
   elementsMax: 8,
@@ -60,9 +50,6 @@ export const ELEMENTS_MAX_ANIMES = ECHELONNAGE.elementsMax;
  * `ELEMENTS_MAX_ANIMES`, les éléments suivants apparaissent sans délai
  * supplémentaire (délai plafonné).
  */
-export const DUREE_MAX_ACTION = 400;
-export const ELEMENTS_MAX_ANIMES = ECHELONNAGE.elementsMax;
-
 export function delaiEchelonnage(i: number): number {
   return Math.min(i, ELEMENTS_MAX_ANIMES - 1) * ECHELONNAGE.delaiParElement;
 }

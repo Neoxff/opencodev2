@@ -700,11 +700,6 @@ export const GENERAL_SETTINGS: SettingSpec[] = [
     placeholder: "system default",
   },
   {
-    key: "accueil",
-    group: "Defaults",
-    label: "Welcome screen",
-    desc: "animated \"Opencodev2\" title on first load",
-    kind: "toggle",
     key: "ciel",
     group: "Defaults",
     label: "Sky",
