@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-22T12:21:12.997Z",
+  "environnement": {
+    "playwright": "1.55.0 (cache bun)",
+    "chromium": "/usr/bin/chromium",
+    "args": [
+      "--no-sandbox"
+    ],
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "port": 4212
+  },
+  "cheminWorker": true,
+  "mesure": {
+    "nom": "application réelle (repli, moteur partagé)",
+    "images": 185,
+    "elapsedMs": 3901,
+    "ips": 47.43,
+    "msParImage": 1.515,
+    "p95Ms": 3.7,
+    "heapUtiliseMo": 4.73,
+    "heapTotalMo": 8.78
+  },
+  "pixels": {
+    "echantillons": 2073600,
+    "noirsPurs": 2050894,
+    "etoiles": 1444,
+    "teintesBleues": 0,
+    "chromaMaxFond": 17,
+    "luminanceMax": 226
+  },
+  "vignette": "radial-gradient(120% 90% at 50% 40%, rgba(0, 0, 0, 0) 48%, rgba(0, 0, 0, 0.92) 100%)",
+  "captures": [
+    "docs/design/captures/build-12-on-1920x1080.png",
+    "docs/design/captures/build-12-static-1920x1080.png",
+    "docs/design/captures/build-12-off-1920x1080.png"
+  ]
+}

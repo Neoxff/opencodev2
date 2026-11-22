@@ -1,0 +1,122 @@
+/* =============================================================================
+   Ciel étoilé — styles isolés.
+
+   Toutes les classes sont préfixées `sky-` : ce fichier ne redéfinit aucun
+   composant existant. Deux règles globales seulement, nécessaires à la règle
+   absolue « fond #000 partout » et à l'empilement du calque de fond.
+   ============================================================================= */
+
+/* Le fond de l'application est noir pur, même quand le ciel est désactivé.
+   `html body` (plutôt que `body`) gagne sur la règle de styles.css quelle que
+   soit l'ordre d'injection des feuilles. */
+html body {
+  background-color: #000;
+}
+
+/* Le canevas est derrière la charpente : les colonnes latérales gardent leur
+   fond opaque, la colonne centrale transparente laisse voir les étoiles. */
+.sky-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.sky-canvas[data-mode="off"] {
+  display: none;
+}
+
+/* Vignettage fort et **neutre** : aucun dégradé coloré, seulement du noir.
+   Statique, donc jamais recalculé ni alloué par image. */
+.sky-vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 40%, transparent 48%, rgba(0, 0, 0, 0.92) 100%);
+}
+
+.sky-vignette[data-mode="off"] {
+  display: none;
+}
+
+/* La charpente au-dessus du ciel — une seule règle, aucun changement de layout. */
+.layout {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- Réglage Ciel, dans la feuille de réglages ---- */
+
+.sky-options {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sky-legend {
+  padding: 0 0 6px;
+  color: var(--text-2);
+  font-size: var(--fs-note);
+}
+
+.sky-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-6);
+  cursor: pointer;
+}
+
+.sky-option:hover {
+  border-color: var(--line-2);
+}
+
+.sky-option:has(input:checked) {
+  border-color: var(--line-2);
+  background: #ffffff0a;
+}
+
+.sky-option:focus-within {
+  outline: 2px solid var(--accent-fort);
+  outline-offset: 2px;
+}
+
+.sky-option input {
+  margin: 3px 0 0;
+  accent-color: #ffffff;
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.sky-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sky-option-label {
+  color: var(--text-1);
+  font-size: var(--fs-base);
+}
+
+.sky-option-desc {
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sky-option {
+    transition: none;
+  }
+}

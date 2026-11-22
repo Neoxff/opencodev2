@@ -59,6 +59,9 @@ import {
   SettingsSheet,
 } from "./settings-sheet"
 import { ProvidersSection } from "./providers"
+import { browserStorage, readSkyMode, writeSkyMode } from "./sky/preferences"
+import { SkyCanvas, SkySection } from "./sky/sky"
+import type { SkyMode } from "./sky/types"
 import {
   SETTINGS_SECTIONS,
   SETTING_SPECS,
@@ -574,6 +577,24 @@ export default function App() {
   const [settingsNotice, setSettingsNotice] = createSignal<string | undefined>()
   const [settingsError, setSettingsError] = createSignal<string | undefined>()
   const [settingsBusy, setSettingsBusy] = createSignal<string | undefined>()
+  /**
+   * Le ciel : préférence **de ce navigateur**, persistée dans `localStorage`
+   * (et non dans la configuration serveur). Sans valeur enregistrée, on
+   * respecte `prefers-reduced-motion` — le doc de design impose `static`.
+   */
+  const [skyMode, setSkyMode] = createSignal<SkyMode>(
+    readSkyMode(
+      browserStorage(),
+      typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    ),
+  )
+  /** L'état est appliqué d'abord, la persistance ensuite — jamais l'inverse. */
+  const changeSkyMode = (mode: SkyMode) => {
+    setSkyMode(mode)
+    writeSkyMode(browserStorage(), mode)
+  }
   /** Les modèles saisis par agent, avant enregistrement. */
   const [agentDrafts, setAgentDrafts] = createSignal<Record<string, string>>({})
   /** La recherche d'agents : 34 lignes ne se parcourent pas, l'utilisateur sait ce qu'il cherche. */
@@ -2753,8 +2774,13 @@ export default function App() {
   }
 
   return (
-    <div class="layout" style={layoutStyle()}>
-      <aside class="rail">
+    <>
+      {/* Fond : canvas derrière la charpente, vignettage CSS statique. Les
+          colonnes latérales gardent leur fond opaque ; la colonne centrale
+          transparente laisse voir les étoiles. Aucun contenu, aria-hidden. */}
+      <SkyCanvas mode={skyMode()} />
+      <div class="layout" style={layoutStyle()}>
+        <aside class="rail">
         <div class="grip" onPointerDown={startSidebarDrag} />
 
         <SidebarLogo />
@@ -3614,6 +3640,12 @@ export default function App() {
               onRemove={(spec) => void removePlugin(spec)}
             />
           </Show>
+
+          {/* Le ciel : trois niveaux, préférence locale persistée — rangée à côté
+              des autres préférences de `general`, sans huitième section. */}
+          <Show when={settingsSection() === "general"}>
+            <SkySection mode={skyMode()} onChange={changeSkyMode} />
+          </Show>
         </SettingsSheet>
       </Show>
 
@@ -3640,5 +3672,6 @@ export default function App() {
         />
       </Show>
     </div>
+    </>
   )
 }
