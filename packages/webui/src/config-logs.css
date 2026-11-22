@@ -1,0 +1,370 @@
+/* =============================================================================
+   Onglets Config / Logs — CSS isolé.
+
+   Toutes les classes sont préfixées `cl-` : aucun sélecteur ne sort de ces deux
+   onglets, aucune règle ne dépend de l'ordre de chargement des autres feuilles.
+   Les couleurs viennent des jetons déjà déclarés dans tokens.css — aucune valeur
+   nouvelle, aucun thème clair (le projet est sombre uniquement).
+   ============================================================================= */
+
+.cl-config,
+.cl-logs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  height: 100%;
+  padding: var(--space-4) var(--space-5);
+  overflow: auto;
+  color: var(--text-1);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Barre d'onglets du panneau — Conversation / Config / Logs. */
+.cl-tabbar {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+  flex: none;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--surface-3);
+  background: var(--surface-0);
+}
+
+.cl-tab {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cl-tab:hover {
+  color: var(--text-1);
+}
+
+.cl-tab.active {
+  color: var(--text-1);
+  border-bottom-color: var(--accent-fort);
+  font-weight: 600;
+}
+
+.cl-tab:focus-visible {
+  outline: 2px solid var(--accent-fort);
+  outline-offset: -2px;
+}
+
+.cl-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--surface-3);
+}
+
+.cl-head-text {
+  min-width: 0;
+}
+
+.cl-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.cl-sub {
+  margin: 2px 0 0;
+  color: var(--text-3);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cl-sub code,
+.cl-note code,
+.cl-issues code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text-2);
+}
+
+.cl-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--text-3);
+  flex: none;
+}
+
+.cl-sub.cl-live .cl-dot {
+  background: var(--success);
+}
+
+.cl-head-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.cl-btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--surface-3);
+  border-radius: var(--radius-6);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cl-btn:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.cl-btn-primary {
+  border-color: var(--accent-fort);
+  background: var(--accent-fort);
+  color: var(--surface-0);
+  font-weight: 600;
+}
+
+.cl-btn-primary:hover:not(:disabled) {
+  background: var(--text-2);
+}
+
+.cl-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cl-note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  max-width: 92ch;
+}
+
+.cl-alert {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-6);
+  font-size: 12px;
+}
+
+.cl-alert-error {
+  border: 1px solid var(--danger);
+  color: var(--danger-texte);
+  background: #f25a5a14;
+}
+
+.cl-alert-ok {
+  border: 1px solid var(--success);
+  color: var(--success);
+  background: var(--success-doux);
+}
+
+.cl-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.cl-editor {
+  width: 100%;
+  min-height: 280px;
+  flex: 1 1 auto;
+  resize: vertical;
+  padding: var(--space-3);
+  border: 1px solid var(--surface-3);
+  border-radius: var(--radius-6);
+  background: var(--surface-0);
+  color: var(--text-1);
+  font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  tab-size: 2;
+}
+
+.cl-editor.cl-invalid {
+  border-color: var(--danger);
+}
+
+.cl-editor:focus-visible,
+.cl-btn:focus-visible,
+.cl-chip:focus-visible,
+.cl-input:focus-visible {
+  outline: 2px solid var(--accent-fort);
+  outline-offset: 2px;
+}
+
+.cl-issues {
+  font-size: 12px;
+  min-height: 20px;
+}
+
+.cl-issues ul {
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--danger-texte);
+}
+
+.cl-ok {
+  color: var(--success);
+}
+
+.cl-empty {
+  margin: var(--space-5) 0;
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--text-3);
+  border: 1px dashed var(--surface-3);
+  border-radius: var(--radius-8);
+}
+
+/* --- Logs --- */
+
+.cl-filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.cl-input {
+  min-height: 44px;
+  min-width: 220px;
+  flex: 1 1 220px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--surface-3);
+  border-radius: var(--radius-6);
+  background: var(--surface-0);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12px;
+}
+
+.cl-input::placeholder {
+  color: var(--text-3);
+}
+
+.cl-levels {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.cl-chip {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--surface-3);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.cl-chip.active {
+  background: var(--surface-3);
+  color: var(--text-1);
+  border-color: var(--accent-fort);
+}
+
+.cl-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--surface-3);
+  border-radius: var(--radius-6);
+  overflow: hidden;
+}
+
+.cl-line {
+  display: grid;
+  grid-template-columns: 68px 54px 84px minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: 6px var(--space-3);
+  border-bottom: 1px solid var(--surface-2);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.cl-line:last-child {
+  border-bottom: 0;
+}
+
+.cl-line:hover {
+  background: var(--surface-1);
+}
+
+.cl-time {
+  color: var(--text-3);
+}
+
+.cl-level {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.cl-level-error {
+  color: var(--danger-texte);
+}
+
+.cl-level-warn {
+  color: var(--attention);
+}
+
+.cl-level-debug {
+  color: var(--text-3);
+}
+
+.cl-source {
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cl-message {
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+.cl-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 768px) {
+  .cl-config,
+  .cl-logs {
+    padding: var(--space-3);
+  }
+
+  .cl-line {
+    grid-template-columns: 60px 52px minmax(0, 1fr);
+  }
+
+  .cl-source {
+    display: none;
+  }
+}
