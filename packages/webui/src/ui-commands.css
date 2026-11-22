@@ -1,0 +1,285 @@
+/* =============================================================================
+   Commandes d'interface — CSS isolé, préfixe `uic-` (aucune règle globale).
+
+   Reproduit les dialogues de la maquette `maquette-opencodev2-ui.html` avec les
+   jetons de `tokens.css`. Fond noir, une seule surface de dialogue, pas de verre
+   superflue : la maquette impose « plus de noir, moins de verre ». Les seules
+   couleurs d'attention viennent des jetons existants (--success, --danger),
+   jamais d'une nouvelle teinte.
+   ============================================================================= */
+
+.uic-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.uic-dialog {
+  width: min(560px, 100%);
+  max-height: 78vh;
+  overflow: auto;
+  background: var(--surface-1, #0c0c0e);
+  border: 1px solid var(--line-2, #2a2a2f);
+  border-radius: var(--radius-12, 12px);
+  padding: 16px;
+  box-shadow: var(--shadow-3, 0 24px 64px rgba(0, 0, 0, 0.6));
+  scrollbar-width: thin;
+  color: var(--text-1, #f5f5f6);
+  animation: uic-in 0.18s ease-out;
+}
+
+@keyframes uic-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uic-dialog {
+    animation: none;
+  }
+}
+
+.uic-dialog:focus {
+  outline: none;
+}
+
+.uic-head {
+  margin: 0 0 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.uic-head kbd,
+.uic-pair kbd {
+  font: 500 0.6875rem var(--font-mono, monospace);
+  color: var(--text-3, #8a8a92);
+  border: 1px solid var(--line-2, #2a2a2f);
+  border-radius: 5px;
+  padding: 1px 6px;
+  background: var(--surface-2, #141417);
+  font-weight: 400;
+}
+
+.uic-filter {
+  width: 100%;
+  height: 36px;
+  border-radius: 9px;
+  background: #000;
+  border: 1px solid var(--line-2, #2a2a2f);
+  padding: 0 12px;
+  margin-bottom: 10px;
+  color: var(--text-1, #f5f5f6);
+  font: inherit;
+  outline: none;
+}
+
+.uic-filter:focus-visible {
+  border-color: var(--accent, #d0d0d4);
+}
+
+.uic-list {
+  display: grid;
+  gap: 2px;
+  max-height: min(52vh, 420px);
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.uic-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.uic-row:hover,
+.uic-row.uic-active {
+  background: var(--surface-2, #141417);
+}
+
+.uic-row:focus-visible {
+  outline: 2px solid var(--accent, #d0d0d4);
+  outline-offset: -2px;
+}
+
+.uic-row b {
+  font: 500 0.8125rem var(--font-mono, monospace);
+  color: var(--text-1, #f5f5f6);
+  flex: none;
+  max-width: 236px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uic-detail {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-3, #8a8a92);
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.uic-check {
+  margin-left: auto;
+  color: var(--text-1, #f5f5f6);
+  flex: none;
+}
+
+.uic-switch {
+  width: 30px;
+  height: 17px;
+  border-radius: 99px;
+  background: var(--surface-3, #242429);
+  position: relative;
+  flex: none;
+  margin-left: auto;
+  transition: background 0.2s;
+}
+
+.uic-switch::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.uic-switch.on {
+  background: var(--success, #7ddc8a);
+}
+
+.uic-switch.on::after {
+  transform: translateX(13px);
+  background: #000;
+}
+
+.uic-empty {
+  padding: 14px;
+  color: var(--text-3, #8a8a92);
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+.uic-pairs {
+  display: grid;
+  gap: 2px;
+}
+
+.uic-pair {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  min-height: 34px;
+}
+
+.uic-pair:nth-child(odd) {
+  background: var(--surface-2, #141417);
+}
+
+.uic-pair > span {
+  color: var(--text-3, #8a8a92);
+}
+
+.uic-pair b {
+  font-weight: 500;
+  color: var(--text-1, #f5f5f6);
+  text-align: right;
+  max-width: 62%;
+  overflow-wrap: anywhere;
+}
+
+.uic-diff {
+  display: grid;
+  gap: 12px;
+  max-height: 56vh;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.uic-file-name {
+  font: 500 0.75rem var(--font-mono, monospace);
+  color: var(--text-2, #b8b8bf);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line-1, #1e1e22);
+}
+
+.uic-line {
+  font: 0.75rem/1.5 var(--font-mono, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 0 8px;
+  color: var(--text-2, #b8b8bf);
+}
+
+.uic-hunk {
+  color: var(--text-3, #8a8a92);
+  background: var(--surface-2, #141417);
+}
+
+.uic-add {
+  color: var(--success, #7ddc8a);
+  background: rgba(125, 220, 138, 0.08);
+}
+
+.uic-del {
+  color: var(--danger, #ff6b6b);
+  background: rgba(255, 107, 107, 0.08);
+}
+
+/* `/timestamps` — l'horodatage réel du message, porté par `data-ts` sur l'ancre du tour.
+   Le pseudo-élément n'existe que quand la commande est active : au repos, aucun bruit. */
+.ui-stamps::before {
+  content: attr(data-ts);
+  display: block;
+  font: 0.6875rem var(--font-mono, monospace);
+  color: var(--text-3, #8a8a92);
+  padding: 2px 0 2px 2px;
+}
+
+/* Les thèmes noirs de la maquette — valeurs `data-th` réelles, appliquées sur :root.
+   C'est le seul réglage global de ce fichier, et il est volontaire : un thème de
+   couleur ne peut pas être porté par le dialogue qui le choisit. */
+:root[data-th="contrast"] {
+  --text-1: #fff;
+  --text-2: #cfcfd6;
+  --text-3: #9a9aa3;
+  --line-1: #34343a;
+  --line-2: #45454c;
+}
+
+:root[data-th="warm"] {
+  --success: #b9e07a;
+  --attention: #ffb454;
+  --text-2: #b3aca3;
+}
