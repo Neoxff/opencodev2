@@ -189,6 +189,41 @@ describe("GitPanel", () => {
     const { container, dispose } = mount()
     await flush()
     expect(container.querySelector(".git-panel")?.getAttribute("data-etat")).toBe("conflit")
+  test("Échap annule la confirmation en cours", async () => {
+    const { container, dispose } = mount()
+    await flush()
+    container.querySelector('button[aria-label="Commit"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    await flush()
+    expect(container.querySelector(".git-confirm")).not.toBeNull()
+    container.querySelector(".git-panel")?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+    await flush()
+    expect(container.querySelector(".git-confirm")).toBeNull()
+    dispose()
+  })
+
+  test("Échap ferme la section Automatisme", async () => {
+    const { container, dispose } = mount()
+    await flush()
+    const auto = container.querySelector(".git-auto-titre") as HTMLButtonElement
+    auto?.click()
+    await flush()
+    expect(auto?.getAttribute("aria-expanded")).toBe("true")
+    container.querySelector(".git-panel")?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+    await flush()
+    expect(auto?.getAttribute("aria-expanded")).toBe("false")
+    dispose()
+  })
+
+  test("libellés EN complets quand la langue est anglaise", async () => {
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    const dispose = render(() => GitPanel({ lang: "en" }), container)
+    await flush()
+    expect(container.textContent).toContain("Repository")
+    // Le statut de test a behind:1 → état « Behind » (pas « Up to date »).
+    expect(container.textContent).toContain("Behind")
+    expect(container.querySelector('button[aria-label="Fetch"]')).not.toBeNull()
+    expect(container.textContent).not.toContain("Dépôt Git lié")
     dispose()
   })
 })

@@ -166,6 +166,29 @@
   white-space: nowrap;
 }
 
+/* Focus visible : tout bouton du panneau est atteignable au clavier avec un
+   indicateur explicite (aucun outline retiré sans remplacement). */
+.git-bouton:focus-visible,
+.git-annuler:focus-visible,
+.git-erreur-action:focus-visible,
+.git-journal-annuler:focus-visible,
+.git-auto-titre:focus-visible {
+  outline: 2px solid var(--text-1);
+  outline-offset: 2px;
+}
+
+/* Cibles tactiles >= 44 x 44 px au doigt, sans agrandir les boutons à la souris. */
+@media (pointer: coarse) {
+  .git-bouton,
+  .git-annuler,
+  .git-erreur-action,
+  .git-journal-annuler {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .git-auto-titre { min-height: 44px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .git-bouton { transition: none; }
 }

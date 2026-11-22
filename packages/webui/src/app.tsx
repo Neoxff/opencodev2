@@ -176,6 +176,8 @@ import { GitPanel } from "./git-panel"
 import RessourcesPanel from "./ressources-panel"
 import { RightPanel, type GoalAction } from "./right-panel"
 import { gitApi, type GitStatus } from "./git-client"
+import { afficherDepot, basculerDepot, choisirLangue, langueInterface } from "./preferences"
+import { gitApi } from "./git-client"
 import {
   createReloadGate,
   createTicketGuard,
@@ -3562,6 +3564,12 @@ export default function App() {
               }}
             </For>
           </div>
+
+          {/* Panneau « Dépôt » — état Git du dépôt lié et actions sûres.
+              Sa visibilité est pilotée par le réglage, source de vérité unique. */}
+          <Show when={afficherDepot()}>
+            <GitPanel lang={langueInterface()} />
+          </Show>
         </div>
 
         <SidebarFooter
@@ -4062,6 +4070,36 @@ export default function App() {
               des autres préférences de `general`, sans huitième section. */}
           <Show when={settingsSection() === "general"}>
             <SkySection mode={skyMode()} onChange={changeSkyMode} />
+          {/* Préférences d'interface : stockage local, pas une clé Config (les 37 clés
+              mesurées du serveur sont les seules que `SETTING_SPECS` peut porter). */}
+          <Show when={settingsSection() === "general"}>
+            <div class="set-block">
+              <h3 class="set-title">Repository panel</h3>
+              <div class="set-row">
+                <label class="set-label">Show repository panel</label>
+                <div class="set-control">
+                  <input
+                    type="checkbox"
+                    checked={afficherDepot()}
+                    aria-label="Show repository panel"
+                    onInput={() => basculerDepot()}
+                  />
+                </div>
+              </div>
+              <div class="set-row">
+                <label class="set-label">Panel language</label>
+                <div class="set-control">
+                  <select
+                    aria-label="Panel language"
+                    value={langueInterface()}
+                    onChange={(e) => choisirLangue(e.currentTarget.value === "en" ? "en" : "fr")}
+                  >
+                    <option value="fr">French</option>
+                    <option value="en">English</option>
+                  </select>
+                </div>
+              </div>
+            </div>
           </Show>
         </SettingsSheet>
       </Show>
