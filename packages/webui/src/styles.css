@@ -5044,3 +5044,90 @@ textarea {
     transform: none;
   }
 }
+
+/* ---------- Commandes de session : lignes skill/MCP et dialogues ---------- */
+.cmd-activity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--line-1);
+  border-radius: 6px;
+  background: var(--bg-1);
+  font-size: var(--fs-note);
+  color: var(--text-1);
+}
+.cmd-activity-kind {
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+.cmd-activity[data-kind="mcp"] .cmd-activity-kind { color: var(--attention); }
+.cmd-activity[data-status="error"] .cmd-activity-status { color: var(--danger); }
+.cmd-activity[data-status="done"] .cmd-activity-status { color: var(--bluish-200); }
+.cmd-activity-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-activity-status {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.cmd-dialog-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000a;
+  padding: 20px;
+}
+.cmd-dialog {
+  width: min(440px, 100%);
+  padding: 18px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--bg-1);
+  box-shadow: 0 16px 48px #0008;
+  color: var(--text-1);
+}
+.cmd-dialog-title { margin: 0 0 10px; font-size: var(--fs-title); font-weight: 600; }
+.cmd-dialog-message { margin: 0 0 14px; font-size: var(--fs-note); color: var(--text-2); line-height: var(--lh-normal); }
+.cmd-dialog-field,
+.cmd-dialog-area {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg-0);
+  color: var(--text-1);
+  font: inherit;
+  font-size: var(--fs-base);
+}
+.cmd-dialog-area { resize: vertical; font-family: var(--mono); }
+.cmd-dialog-field:focus-visible,
+.cmd-dialog-area:focus-visible,
+.cmd-dialog-button:focus-visible {
+  outline: 2px solid var(--bluish-200);
+  outline-offset: 1px;
+}
+.cmd-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.cmd-dialog-button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--text-1);
+  font: inherit;
+  font-size: var(--fs-note);
+  cursor: pointer;
+}
+.cmd-dialog-button.primary { background: var(--bluish-200); color: var(--bg-0); border-color: transparent; }
+.cmd-dialog-button.danger { border-color: var(--danger); color: var(--danger); }
+.cmd-dialog-button:hover { filter: brightness(1.12); }
