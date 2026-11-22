@@ -238,6 +238,49 @@ export function modelContextLimits(payload: unknown): Record<string, number> {
 }
 
 /**
+ * Les variantes réellement offertes par chaque modèle, projetées **sans la charge brute**.
+ *
+ * `/config/providers` porte des secrets : on ne garde que `provider.id`, l'identifiant du modèle et
+ * les clés de `variants`. Un `disabled: true` retire la variante — la proposer serait mentir sur ce
+ * que le serveur accepte. L'ordre suit la maquette (`max`, `high`, `medium`, `low`) avant l'ordre
+ * alphabétique, puisqu'aucun ordre canonique n'est publié par l'API.
+ */
+export function modelVariantCatalog(payload: unknown): Record<string, Choice[]> {
+  const providers = (payload as { providers?: unknown } | undefined)?.providers
+  if (!Array.isArray(providers)) return {}
+  const catalog: Record<string, Choice[]> = {}
+  const order = ["max", "high", "medium", "low"]
+  for (const entry of providers) {
+    if (!entry || typeof entry !== "object") continue
+    const provider = entry as { id?: unknown; models?: unknown }
+    if (typeof provider.id !== "string" || !provider.id) continue
+    if (!provider.models || typeof provider.models !== "object") continue
+    for (const [id, model] of Object.entries(provider.models as Record<string, unknown>)) {
+      const variants = model && typeof model === "object" ? (model as { variants?: unknown }).variants : undefined
+      if (!variants || typeof variants !== "object") continue
+      const choices: Choice[] = []
+      for (const [name, config] of Object.entries(variants as Record<string, unknown>)) {
+        if (config && typeof config === "object" && (config as { disabled?: unknown }).disabled === true) continue
+        choices.push({ value: name, label: name })
+      }
+      choices.sort(
+        (left, right) =>
+          (order.indexOf(left.value) < 0 ? order.length : order.indexOf(left.value)) -
+            (order.indexOf(right.value) < 0 ? order.length : order.indexOf(right.value)) ||
+          left.label.localeCompare(right.label),
+      )
+      catalog[`${provider.id}/${id}`] = choices
+    }
+  }
+  return catalog
+}
+
+/** La variante à afficher au repos : `max` quand le modèle l'offre, sinon la première. */
+export function preferredVariant(choices: Choice[]): string {
+  return choices.find((choice) => choice.value === "max")?.value ?? choices[0]?.value ?? ""
+}
+
+/**
  * Un choix de modèle `providerID/modelID` relu en `{ providerID, modelID }`.
  *
  * La coupe se fait sur le **premier** `/` : un identifiant de modèle peut en contenir (`a/b/c`), un

@@ -22,7 +22,6 @@ import {
 import {
   Boundary,
   ComposerMarkup,
-  ComposerStats,
   TaskContract,
   TodoList,
   ContextInjections,
@@ -40,6 +39,7 @@ import {
   UserPrompt,
   WorkspaceGroup,
 } from "./components"
+import { COMPOSER_PLACEHOLDER, ComposerControls, ComposerStatusBar, ComposerSuggestions } from "./composer-ui"
 import {
   ConversationHeader,
   ConversationParagraph,
@@ -90,6 +90,8 @@ import {
   modelPatch,
   newProviderDraft,
   parseModelChoice,
+  modelVariantCatalog,
+  preferredVariant,
   providerId,
   providerPatch,
   toggleModel,
@@ -108,6 +110,9 @@ import {
   type SubmitMode,
 } from "./shortcuts"
 import { CrossIcon, FolderPlusIcon, GearIcon, PluginIcon, PlusIcon, SearchIcon, SendIcon } from "./icons"
+import { FolderPicker } from "./picker"
+import { FolderBrowser } from "./folder-browser"
+import { CrossIcon, FolderPlusIcon, GearIcon, PluginIcon, PlusIcon, SearchIcon } from "./icons"
 import { TrajectoryView } from "./trajectory-view"
 import {
   commandChoices,
@@ -369,6 +374,19 @@ export default function App() {
   const [composerModel, setComposerModel] = createSignal("")
   const [composerAgent, setComposerAgent] = createSignal("")
   /**
+   * Les variantes sont projetées depuis `/config/providers` au moment où le catalogue est lu : la
+   * charge brute, elle contient des clés en clair et ne survit pas à cette projection.
+   */
+  const [variantCatalog, setVariantCatalog] = createSignal<Record<string, Choice[]>>({})
+  const [composerVariant, setComposerVariant] = createSignal("")
+  const variantOptions = createMemo(() => variantCatalog()[composerModel()] ?? [])
+  /** La variante affichée et envoyée : choix explicite valide, sinon la première offerte par le modèle. */
+  const activeVariant = createMemo(() => {
+    const current = composerVariant()
+    const choices = variantOptions()
+    return choices.some((choice) => choice.value === current) ? current : preferredVariant(choices)
+  })
+  /**
    * Le plan de la session — ses todos et son contrat — affiché juste au-dessus du compositeur.
    *
    * Il vit **hors du fil** : ce sont des informations d'état courant, pas un moment passé. Le fil
@@ -388,6 +406,11 @@ export default function App() {
   const [modelLimits, setModelLimits] = createSignal<Record<string, number>>({})
   /** Les agents proposables — chargés à la première ouverture du choix, jamais au montage (1,5 Mo). */
   const [agentOptions, setAgentOptions] = createSignal<Choice[]>([])
+  const labelOf = (choices: Choice[], value: string, fallback: string) =>
+    choices.find((choice) => choice.value === value)?.label ?? (value || fallback)
+  const agentLabel = createMemo(() => labelOf(agentOptions(), composerAgent(), "orchestrator"))
+  const modelLabel = createMemo(() => labelOf(modelOptions(), composerModel(), "default model"))
+  const variantLabel = createMemo(() => activeVariant() || "default variant")
   /**
    * Le modèle et l'agent de la saisie suivent **ce que la session a réellement utilisé**.
    *
@@ -404,6 +427,8 @@ export default function App() {
       untrack(() => {
         if (!composerModel() && info.providerID && info.modelID) setComposerModel(`${info.providerID}/${info.modelID}`)
         if (!composerAgent() && typeof info.agent === "string" && info.agent) setComposerAgent(info.agent)
+        const requested = info.model?.variant
+        if (!composerVariant() && typeof requested === "string" && requested) setComposerVariant(requested)
       })
       return
     }
@@ -718,6 +743,7 @@ export default function App() {
     const payload = (result as { data?: unknown } | undefined)?.data
     setModelOptions(modelCatalog(payload))
     setModelLimits(modelContextLimits(payload))
+    setVariantCatalog(modelVariantCatalog(payload))
   }
 
   /** Les agents proposables — payés à la première ouverture du choix, pas au montage. */
@@ -940,13 +966,39 @@ export default function App() {
     await client.session.abort({ sessionID, ...scope() }).catch((cause: unknown) => setError(String(cause)))
   }
 
+  /** `@ tag files` : on ouvre la mention au curseur, exactement comme si on l'avait tapée. */
+  const tagFiles = () => {
+    const element = input
+    const current = draft()
+    const caret = element?.selectionStart ?? current.length
+    const edit = replaceRange(current, caret, caret, " @")
+    setDraft(edit.text)
+    setHistoryIndex(-1)
+    queueMicrotask(() => {
+      element?.focus()
+      element?.setSelectionRange(edit.caret, edit.caret)
+      refreshMenu(edit.text, edit.caret)
+    })
+  }
+
+  /** `ctrl+p commands` : le menu `/` déjà testé, sans écraser ce qui est écrit. */
+  const openCommands = () => {
+    setMenu("commands")
+    setMenuIndex(0)
+    void loadCommands()
+    input?.focus()
+  }
+
   /**
    * Le clavier du champ — dans l'ordre où les touches se disputent.
    *
    * Le menu **consomme** les flèches, `Entrée` et `Échap` tant qu'il est ouvert : sinon on déplacerait
    * le curseur sous la liste, et `Entrée` enverrait le message au lieu de choisir la ligne.
    */
-  const onComposerKey = (event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) => {
+  const onComposerKey = (
+    event: KeyboardEvent & { currentTarget: HTMLTextAreaElement },
+    submit: () => void = () => void send(),
+  ) => {
     const element = event.currentTarget
     const rows = suggestions()
     if (menu() && rows.length > 0) {
@@ -978,6 +1030,7 @@ export default function App() {
       else void sendFromHome()
       // Pendant le travail, `promptAsync` met le message en file côté serveur ; le mode le dit.
       void send(undefined, submitMode(false, working()))
+      submit()
       return
     }
     if (event.key === "Tab") {
@@ -1955,6 +2008,7 @@ export default function App() {
         sessionID,
         parts,
         ...(model ? { model } : {}),
+        ...(activeVariant() ? { variant: activeVariant() } : {}),
         ...(composerAgent() ? { agent: composerAgent() } : {}),
         ...scope(),
       })
@@ -2496,41 +2550,70 @@ export default function App() {
                   void addFiles(event.currentTarget.files)
                   // Remis à zéro pour qu'attacher deux fois le même fichier soit possible.
                   event.currentTarget.value = ""
+        <div class="cv-dock">
+          <form class="home-composer cv-composer" onSubmit={(event) => void sendFromHome(event)}>
+            <ComposerSuggestions
+              open={Boolean(menu()) && suggestions().length > 0}
+              entries={suggestions()}
+              active={menuIndex()}
+              label={menu() === "commands" ? "commands" : "files"}
+              onPick={acceptSuggestion}
+              onHover={setMenuIndex}
+            />
+            <div class="composer-field">
+              <ComposerMarkup text={draft()} />
+              <textarea
+                class="composer-input"
+                rows="2"
+                placeholder={COMPOSER_PLACEHOLDER}
+                value={draft()}
+                ref={(element: HTMLTextAreaElement) => (input = element)}
+                onInput={(event) => {
+                  const value = event.currentTarget.value
+                  setDraft(value)
+                  setHistoryIndex(-1)
+                  refreshMenu(value, event.currentTarget.selectionStart)
                 }}
-              />
-            </label>
-            {/* Le modèle et l'agent se choisissent **ici** : ils partent avec le premier message, donc
-                les choisir après coup serait les choisir trop tard. */}
-            <div class="composer-picks">
-              <Picker
-                choices={modelOptions()}
-                value={composerModel()}
-                placeholder="Default model"
-                label="model"
-                onOpen={() => void loadModelCatalog()}
-                onChange={setComposerModel}
-              />
-              <Picker
-                choices={agentOptions()}
-                value={composerAgent()}
-                placeholder="Default agent"
-                label="agent"
-                onOpen={() => void loadAgentOptions()}
-                onChange={setComposerAgent}
+                onKeyDown={(event) => onComposerKey(event, () => void sendFromHome())}
+                onKeyUp={(event) => {
+                  if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+                    refreshMenu(draft(), event.currentTarget.selectionStart)
+                  }
+                }}
+                onClick={(event) => refreshMenu(draft(), event.currentTarget.selectionStart)}
               />
             </div>
-            <span class="spacer" />
-            <button
-              class="send"
-              type="submit"
-              title="Send"
-              aria-label="Send"
-              disabled={!draft().trim() && attachments().length === 0}
-            >
-              <SendIcon />
-            </button>
-          </div>
-        </form>
+            <Show when={attachError()}>{(message) => <p class="error">{message()}</p>}</Show>
+            <ComposerControls
+              agents={agentOptions()}
+              agent={composerAgent()}
+              onAgentChange={setComposerAgent}
+              onOpenAgents={() => void loadAgentOptions()}
+              models={modelOptions()}
+              model={composerModel()}
+              onModelChange={setComposerModel}
+              onOpenModels={() => void loadModelCatalog()}
+              variants={variantOptions()}
+              variant={activeVariant()}
+              onVariantChange={setComposerVariant}
+              working={working()}
+              canSend={Boolean(draft().trim()) || attachments().length > 0}
+              onAttach={(files) => void addFiles(files)}
+              onInterrupt={() => void abortRun()}
+            />
+          </form>
+          <ComposerStatusBar
+            agent={agentLabel()}
+            model={modelLabel()}
+            variant={variantLabel()}
+            stats={stats()}
+            contextLimit={modelLimits()[composerModel()]}
+            working={working()}
+            onInterrupt={() => void abortRun()}
+            onTagFiles={tagFiles}
+            onCommands={openCommands}
+          />
+        </div>
       </div>
     </div>
     <OpeningScreen
@@ -3244,7 +3327,7 @@ export default function App() {
           </Show>
 
           <form class="composer" onSubmit={send}>
-            <div class="composer-inner">
+            <div class="composer-inner cv-composer">
               <Show when={attachments().length > 0}>
                 <ul class="pending">
                   <For each={attachments()}>
@@ -3278,12 +3361,20 @@ export default function App() {
                   onPick={(row) => activateSuggestion(suggestions().indexOf(row), false)}
                 />
               </Show>
+              <ComposerSuggestions
+                open={Boolean(menu()) && suggestions().length > 0}
+                entries={suggestions()}
+                active={menuIndex()}
+                label={menu() === "commands" ? "commands" : "files"}
+                onPick={acceptSuggestion}
+                onHover={setMenuIndex}
+              />
               <div class="composer-field">
                 <ComposerMarkup text={draft()} />
                 <textarea
                   class="composer-input"
                   rows="2"
-                  placeholder="Message, / commands, @ files"
+                  placeholder={COMPOSER_PLACEHOLDER}
                   value={draft()}
                   ref={(element: HTMLTextAreaElement) => (input = element)}
                   onInput={(event) => {
@@ -3304,51 +3395,23 @@ export default function App() {
                   onClick={(event) => refreshMenu(draft(), event.currentTarget.selectionStart)}
                 />
               </div>
-              <div class="composer-bar">
-                <label class="attach" title="Attach files">
-                  <PlusIcon size={16} />
-                  <input
-                    class="hidden-input"
-                    type="file"
-                    multiple
-                    onChange={(event) => {
-                      void addFiles(event.currentTarget.files)
-                      // Remis à zéro pour qu'attacher deux fois le même fichier soit possible.
-                      event.currentTarget.value = ""
-                    }}
-                  />
-                </label>
-                {/* Les deux choix du prochain message. Le modèle est déjà là ; les agents arrivent à
-                    la première ouverture — 1,5 Mo ne se paient pas au repos. */}
-                <div class="composer-picks">
-                  <Picker
-                    choices={modelOptions()}
-                    value={composerModel()}
-                    placeholder="Default model"
-                    label="model"
-                    onOpen={() => void loadModelCatalog()}
-                    onChange={setComposerModel}
-                  />
-                  <Picker
-                    choices={agentOptions()}
-                    value={composerAgent()}
-                    placeholder="Default agent"
-                    label="agent"
-                    onOpen={() => void loadAgentOptions()}
-                    onChange={setComposerAgent}
-                  />
-                </div>
-                <span class="spacer" />
-                <button
-                  class="send"
-                  type="submit"
-                  title="Send"
-                  aria-label="Send"
-                  disabled={!draft().trim() && attachments().length === 0}
-                >
-                  <SendIcon />
-                </button>
-              </div>
+              <ComposerControls
+                agents={agentOptions()}
+                agent={composerAgent()}
+                onAgentChange={setComposerAgent}
+                onOpenAgents={() => void loadAgentOptions()}
+                models={modelOptions()}
+                model={composerModel()}
+                onModelChange={setComposerModel}
+                onOpenModels={() => void loadModelCatalog()}
+                variants={variantOptions()}
+                variant={activeVariant()}
+                onVariantChange={setComposerVariant}
+                working={working()}
+                canSend={Boolean(draft().trim()) || attachments().length > 0}
+                onAttach={(files) => void addFiles(files)}
+                onInterrupt={() => void abortRun()}
+              />
             </div>
             <ComposerStats stats={stats()} contextLimit={modelLimits()[composerModel()]} working={working()} />
             {/* Les raccourcis du tour en cours, dits pendant qu'ils s'appliquent (maquette `status`). */}
@@ -3359,6 +3422,17 @@ export default function App() {
                 <span><kbd>alt+s</kbd> steer</span>
               </div>
             </Show>
+            <ComposerStatusBar
+              agent={agentLabel()}
+              model={modelLabel()}
+              variant={variantLabel()}
+              stats={stats()}
+              contextLimit={modelLimits()[composerModel()]}
+              working={working()}
+              onInterrupt={() => void abortRun()}
+              onTagFiles={tagFiles}
+              onCommands={openCommands}
+            />
           </form>
           </Show>
         </Show>

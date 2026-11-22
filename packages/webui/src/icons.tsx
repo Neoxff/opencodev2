@@ -270,6 +270,29 @@ export function SendIcon(props: { size?: number }) {
   )
 }
 
+/** Agent : une tête de robot. Deux traits suffisent à la lire à 14 px. */
+export function BotIcon(props: { size?: number }) {
+  return (
+    <Glyph size={props.size ?? 14}>
+      <rect x="5" y="8" width="14" height="11" rx="3" />
+      <path d="M12 4v4" />
+      <path d="M9 13h.01M15 13h.01" />
+      <path d="M9.5 16h5" />
+    </Glyph>
+  )
+}
+
+/** Micro : le geste est rare, mais quand il est là il doit se lire sans infobulle. */
+export function MicIcon(props: { size?: number }) {
+  return (
+    <Glyph size={props.size ?? 14}>
+      <rect x="9" y="3" width="6" height="10" rx="3" />
+      <path d="M5 11v1a7 7 0 0 0 14 0v-1" />
+      <path d="M12 19v3M9 22h6" />
+    </Glyph>
+  )
+}
+
 /** La barre d'outils de la trajectoire (capture DSH) : `◷ Duration`, `☰ Turns`, `🔍 Search`. */
 export function ClockIcon(props: { size?: number }) {
   return (

@@ -1,0 +1,282 @@
+/* Composeur Build 4 — isolé dans les classes .cv-*, chargé après styles.css.
+   Les valeurs sont celles de docs/design/maquette-opencodev2-ui.html (lignes 129-151). */
+
+.cv-composer,
+.cv-status {
+  --cv-raise: #131316;
+  --cv-raise-2: #1b1b1f;
+  --cv-line-2: #2c2c31;
+  --cv-tx: #ebebed;
+  --cv-tx-2: #a3a3ab;
+  --cv-tx-3: #6c6c75;
+  --cv-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --cv-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+
+/* La boîte du champ : 660 px, 14 px de rayon, deux surfaces seulement. */
+.cv-composer {
+  width: min(660px, 100%);
+  margin: 0 auto;
+  padding: 12px 14px 10px;
+  background: var(--cv-raise);
+  border: 1px solid var(--cv-line-2);
+  border-radius: 14px;
+  color: var(--cv-tx);
+  font: 13px/1.45 var(--cv-font);
+  transition: border-color 0.25s;
+}
+
+.cv-composer:focus-within {
+  border-color: #44444b;
+}
+
+/* Le champ reste un textarea — curseur, sélection et copier-coller natifs — mais le calque
+   markdown doit avoir exactement ses métriques, sinon le texte lu décroche du curseur. */
+.cv-composer .composer-input,
+.cv-composer .composer-markup {
+  font: 13px/1.5 var(--cv-font);
+  padding: 0;
+  min-height: 44px;
+}
+
+.cv-composer .composer-input {
+  max-height: 340px;
+  color: transparent;
+  caret-color: var(--cv-tx);
+}
+
+.cv-composer .composer-input::placeholder {
+  color: var(--cv-tx-3);
+}
+
+.cv-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cv-round,
+.cv-mic,
+.cv-send {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+
+/* La cible reste de 44 px, sans épaissir le cercle dessiné. */
+.cv-round::after,
+.cv-mic::after,
+.cv-send::after,
+.cv-select .pick-trigger::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+.cv-round {
+  border: 1px solid var(--cv-line-2);
+  background: transparent;
+  color: var(--cv-tx-2);
+  transition: background 0.2s, color 0.2s;
+}
+
+.cv-round:hover {
+  background: var(--cv-raise-2);
+  color: var(--cv-tx);
+}
+
+.cv-select {
+  position: relative;
+  min-width: 0;
+}
+
+.cv-select .pick {
+  max-width: none;
+}
+
+.cv-select-agent .pick {
+  max-width: min(150px, 36vw);
+}
+
+.cv-select-variant .pick {
+  max-width: min(110px, 26vw);
+}
+
+.cv-select-model .pick {
+  max-width: min(190px, 42vw);
+}
+
+.cv-select .pick-trigger {
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cv-tx);
+  font-size: 12.5px;
+  line-height: 1;
+  transition: background 0.2s;
+}
+
+.cv-select .pick-trigger:hover,
+.cv-select .pick-trigger[aria-expanded="true"] {
+  background: var(--cv-raise-2);
+  outline: none;
+}
+
+.cv-select .pick-trigger:focus-visible {
+  outline: 2px solid var(--cv-tx-2);
+  outline-offset: 1px;
+}
+
+.cv-select .pick-icon,
+.cv-select .pick-trigger > svg {
+  color: var(--cv-tx-2);
+  flex: none;
+}
+
+.cv-select .pick-trigger > svg:last-child {
+  color: var(--cv-tx-3);
+}
+
+.cv-spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+.cv-mic {
+  margin: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--cv-tx-2);
+}
+
+.cv-mic:disabled {
+  color: var(--cv-tx-3);
+  opacity: 1;
+  cursor: default;
+}
+
+.cv-send {
+  border: 0;
+  background: #f2f2f4;
+  color: #000;
+  transition: transform 0.2s;
+}
+
+.cv-send:hover:not(:disabled) {
+  transform: scale(1.08);
+}
+
+.cv-send:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.cv-send:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.cv-send .glyph {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.2;
+}
+
+.cv-send .cv-square {
+  display: none;
+  width: 11px;
+  height: 11px;
+  border: 2px solid #000;
+  border-radius: 2px;
+}
+
+.cv-send.is-working .glyph {
+  display: none;
+}
+
+.cv-send.is-working .cv-square {
+  display: block;
+}
+
+.cv-status {
+  width: min(660px, 100%);
+  margin: 8px auto 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 4px;
+  color: var(--cv-tx-3);
+  font-size: 11.5px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+
+.cv-status b {
+  color: var(--cv-tx-2);
+  font-weight: 500;
+}
+
+.cv-status kbd {
+  font: inherit;
+  color: var(--cv-tx-2);
+}
+
+.cv-status-button,
+.cv-status-hint {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cv-status-button::after,
+.cv-status-hint::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+.cv-status-button:hover,
+.cv-status-hint:hover {
+  color: var(--cv-tx-2);
+}
+
+.cv-status-hint:focus-visible,
+.cv-status-button:focus-visible {
+  outline: 2px solid var(--cv-tx-2);
+  outline-offset: 2px;
+}
+
+@media (max-width: 520px) {
+  .cv-controls,
+  .cv-status {
+    flex-wrap: wrap;
+  }
+
+  .cv-select .pick {
+    max-width: min(180px, 44vw);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-composer,
+  .cv-round,
+  .cv-send {
+    transition: none;
+  }
+}
