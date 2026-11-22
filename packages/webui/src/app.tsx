@@ -97,11 +97,21 @@ import {
 import { Picker } from "./picker"
 import { FolderBrowser } from "./folder-browser"
 import { PlusIcon, SendIcon } from "./icons"
+import "./shortcuts.css"
+import { ShortcutPalette, type PaletteCommand } from "./shortcut-palette"
+import {
+  deliveryNotice,
+  keyState,
+  matchShortcut,
+  partMetadata,
+  submitMode,
+  type SubmitMode,
+} from "./shortcuts"
+import { CrossIcon, FolderPlusIcon, GearIcon, PluginIcon, PlusIcon, SearchIcon, SendIcon } from "./icons"
 import { TrajectoryView } from "./trajectory-view"
 import {
   commandChoices,
   historyStep,
-  isDoubleEscape,
   mentionQuery,
   nextChoice,
   promptHistory,
@@ -399,8 +409,6 @@ export default function App() {
   const [historyIndex, setHistoryIndex] = createSignal(-1)
   /** Le champ, pour reposer le curseur après un remplacement. */
   let input: HTMLTextAreaElement | undefined
-  /** L'instant du dernier `Échap` — un `let`, pas un signal : rien ne l'affiche. */
-  let lastEscape: number | undefined
   let fileTimer: ReturnType<typeof setTimeout> | undefined
   const [query, setQuery] = createSignal("")
   /**
@@ -463,6 +471,11 @@ export default function App() {
   const [headDraft, setHeadDraft] = createSignal("")
   // Configuration : lue seulement quand la feuille s'ouvre. Rien de tout cela ne s'affiche au repos.
   const [configOpen, setConfigOpen] = createSignal(false)
+  /** La palette Ctrl+P : un calque, donc Échap la ferme avant d'interrompre l'agent. */
+  const [paletteOpen, setPaletteOpen] = createSignal(false)
+  /** Retour court des raccourcis (file, steer) — effacé après quelques secondes. */
+  const [shortcutNotice, setShortcutNotice] = createSignal<string | undefined>()
+  let shortcutTimer: ReturnType<typeof setTimeout> | undefined
   const [config, setConfig] = createSignal<{
     model?: unknown
     small_model?: unknown
@@ -870,6 +883,13 @@ export default function App() {
     })
   }
 
+  /** Un retour transitoire : le raccourci a agi, l'écran le dit, puis la trace disparaît. */
+  const flash = (text: string) => {
+    setShortcutNotice(text)
+    clearTimeout(shortcutTimer)
+    shortcutTimer = setTimeout(() => setShortcutNotice((current) => (current === text ? undefined : current)), 4000)
+  }
+
   /**
    * Arrêter le travail en cours.
    *
@@ -906,6 +926,8 @@ export default function App() {
       }
       if (event.key === "Escape") {
         event.preventDefault()
+        // Le menu consomme Échap : le gestionnaire global ne doit pas interrompre l'agent par-dessus.
+        event.stopPropagation()
         setMenu(undefined)
         return
       }
@@ -916,6 +938,8 @@ export default function App() {
       // l'envoi. Appeler `send()` directement laissait `Entrée` sans effet sur le premier message.
       if (active()) void send()
       else void sendFromHome()
+      // Pendant le travail, `promptAsync` met le message en file côté serveur ; le mode le dit.
+      void send(undefined, submitMode(false, working()))
       return
     }
     if (event.key === "Tab") {
@@ -926,18 +950,8 @@ export default function App() {
       void loadAgentOptions().then((choices) => setComposerAgent((current) => nextChoice(choices, current)))
       return
     }
-    if (event.key === "Escape") {
-      // Deux `Échap` rapprochés arrêtent le travail ; un seul n'a rien fait de plus (le menu est
-      // déjà fermé ci-dessus, ou il n'était pas ouvert).
-      const now = Date.now()
-      if (working() && isDoubleEscape(lastEscape, now)) {
-        lastEscape = undefined
-        void abortRun()
-        return
-      }
-      lastEscape = now
-      return
-    }
+    // Échap remonte au gestionnaire global : un seul Échap interrompt l'agent quand il travaille,
+    // comme dans la maquette. Ici, seul le menu de suggestions le consommait plus haut.
     if (event.key === "ArrowUp" && element.selectionStart === 0 && element.selectionEnd === 0) {
       event.preventDefault()
       const step = historyStep(promptHistory(messages()), historyIndex(), "up")
@@ -1745,7 +1759,7 @@ export default function App() {
 
   const removeAttachment = (id: string) => setAttachments((current) => current.filter((item) => item.id !== id))
 
-  const send = async (event?: { preventDefault: () => void }) => {
+  const send = async (event?: { preventDefault: () => void }, mode: SubmitMode = "send") => {
     event?.preventDefault()
     const sessionID = active()
     const text = draft().trim()
@@ -1757,7 +1771,12 @@ export default function App() {
     setDraft("")
     setAttachments([])
     setAttachError(undefined)
-    const parts = [...(text ? [{ type: "text" as const, text }] : []), ...files.map(buildFilePart)]
+    // Le steer est porté par les métadonnées de la partie texte — le protocole du serveur
+    // (`prompt-queue.ts`), pas une simulation côté interface.
+    const parts = [
+      ...(text ? [{ type: "text" as const, text, ...partMetadata(mode) }] : []),
+      ...files.map(buildFilePart),
+    ]
     // Le modèle et l'agent partent avec le message : c'est ce qui rend le changement effectif ici et
     // maintenant, sans toucher à la configuration. Absents, le serveur applique son défaut.
     const model = parseModelChoice(composerModel())
@@ -1773,7 +1792,34 @@ export default function App() {
         setError(String(cause))
         return undefined
       })
-    if (result) await loadMessages(sessionID)
+    if (result) {
+      await loadMessages(sessionID)
+      // Le retour ne s'affiche qu'après acceptation : dire « queued » d'un message refusé serait un mensonge.
+      const note = deliveryNotice(mode)
+      if (note) flash(note)
+    }
+  }
+
+  /** Entrée pendant le travail : le message est accepté puis mis en file par le serveur. */
+  const queueMessage = () => {
+    if (!draft().trim() && attachments().length === 0) {
+      flash("file d'attente : saisissez un message")
+      return
+    }
+    void send(undefined, "queue")
+  }
+
+  /** Alt+S : la consigne rejoint le tour en cours si le serveur le permet, sinon on le dit. */
+  const steerMessage = () => {
+    if (!working()) {
+      flash("steer : aucun tour en cours — consigne non envoyée")
+      return
+    }
+    if (!draft().trim() && attachments().length === 0) {
+      flash("steer : saisissez une consigne")
+      return
+    }
+    void send(undefined, "steer")
   }
 
   const applyDirectory = (value: string) => {
@@ -1872,8 +1918,13 @@ export default function App() {
     // La charpente suit la largeur de fenêtre : le solveur est pur, donc rien à mémoriser ici.
     const onResize = () => setViewport(window.innerWidth)
     window.addEventListener("resize", onResize)
-    // Échap ferme la feuille de configuration — un panneau modal qui ne se ferme qu'à la souris
-    // piège celui qui l'a ouvert au clavier.
+    /**
+     * Les raccourcis globaux, branchés sur les vraies actions de la page.
+     *
+     * Chaque calque consomme son propre Échap (stopPropagation) avant cette ligne : Échap ferme
+     * d'abord ce qui est ouvert, puis interrompt l'agent s'il travaille. Le `preventDefault` vient
+     * du registre (`shortcuts.ts`) : seuls les raccourcis qui écrasent le navigateur le demandent.
+     */
     const onKey = (event: KeyboardEvent) => {
       // La palette s'ouvre de n'importe où, y compris hors du champ : c'est un geste global.
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
@@ -1887,6 +1938,40 @@ export default function App() {
       if (event.key === "Escape") {
         if (paletteOpen()) setPaletteOpen(false)
         else setConfigOpen(false)
+      const match = matchShortcut(keyState(event), "global")
+      if (!match) return
+      if (match.preventDefault) event.preventDefault()
+      switch (match.id) {
+        case "palette":
+          setPaletteOpen(true)
+          return
+        case "newSession":
+          void createSession()
+          return
+        case "renameSession": {
+          const session = sessions().find((entry) => entry.id === active())
+          if (session) startRename(session)
+          return
+        }
+        case "deleteSession": {
+          const sessionID = active()
+          if (sessionID) setConfirming(sessionID)
+          return
+        }
+        case "interrupt":
+          if (paletteOpen()) {
+            setPaletteOpen(false)
+            return
+          }
+          if (configOpen()) {
+            setConfigOpen(false)
+            return
+          }
+          if (working()) void abortRun()
+          return
+        case "steer":
+          steerMessage()
+          return
       }
     }
     window.addEventListener("keydown", onKey)
@@ -1993,6 +2078,7 @@ export default function App() {
     onCleanup(() => {
       clearInterval(healthTimer)
       clearTimeout(searchTimer)
+      clearTimeout(shortcutTimer)
       if (threadFrame !== undefined) cancelAnimationFrame(threadFrame)
       window.removeEventListener("resize", onResize)
       window.removeEventListener("keydown", onKey)
@@ -2360,10 +2446,47 @@ export default function App() {
   )
 
   /**
+   * Les commandes de la palette pointent toutes sur des actions déjà dans l'interface : la palette
+   * n'invente aucun geste, elle donne un clavier à ceux qui existent.
+   */
+  const paletteCommands = (): PaletteCommand[] => {
+    const session = sessions().find((entry) => entry.id === active())
+    const sessionID = active()
+    return [
+      { id: "new", label: "Nouvelle session", keys: "alt+n", run: () => void createSession() },
+      { id: "search", label: "Rechercher des sessions", hint: "workspaces", run: () => setHeadMode("search") },
+      {
+        id: "rename",
+        label: "Renommer la session courante",
+        keys: "ctrl+r",
+        run: () => {
+          if (session) startRename(session)
+        },
+      },
+      {
+        id: "delete",
+        label: "Supprimer la session courante",
+        keys: "ctrl+d",
+        hint: "confirmation",
+        run: () => {
+          if (sessionID) setConfirming(sessionID)
+        },
+      },
+      { id: "interrupt", label: "Interrompre l'agent", keys: "esc", run: () => void abortRun() },
+      { id: "queue", label: "Mettre le message en file", keys: "enter", run: queueMessage },
+      { id: "steer", label: "Injecter la consigne dans le tour", keys: "alt+s", run: steerMessage },
+      { id: "config", label: "Ouvrir les réglages", run: () => setConfigOpen(true) },
+    ]
+  }
+
+  /**
    * Ce qui est sain ne s'affiche pas. Le bandeau n'existe que si quelque chose est cassé, et
    * disparaît dès que c'est réparé — l'absence est le meilleur indicateur.
    */
   const notice = () => {
+    // Le retour d'un raccourci est prioritaire : c'est la réponse à l'action qu'on vient de faire.
+    const flashMessage = shortcutNotice()
+    if (flashMessage) return { text: flashMessage, bad: false }
     if (!health()?.healthy) return { text: "server unreachable", bad: true }
     if (!stream().connected) return { text: "stream interrupted", bad: false }
     // L'agent travaille : le serveur le dit, on ne le devine pas. Transitoire, donc pas un « badge au
@@ -2421,6 +2544,78 @@ export default function App() {
               setHistoryOpen(false)
             }}
           />
+          {/* La ligne du libellé porte les **deux gestes de premier niveau** — chercher, ajouter —
+              et devient le champ correspondant. Au repos elle n'est qu'un libellé : ce qui est rare
+              ne s'affiche pas (§8), et ces deux fonctions se trouvent là où on les cherche. */}
+          <div class="ws-head">
+            <Show when={headMode() === "none"} fallback={<input
+              class="ws-input"
+              autofocus
+              placeholder={headMode() === "search" ? "Search sessions" : "path to a project folder"}
+              aria-label={headMode() === "search" ? "Search sessions" : "path to a project folder"}
+              value={headMode() === "search" ? query() : headDraft()}
+              onInput={(event) =>
+                headMode() === "search" ? setQuery(event.currentTarget.value) : setHeadDraft(event.currentTarget.value)
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  const path = headMode() === "add" ? headDraft().trim() : ""
+                  setHeadMode("none")
+                  setHeadDraft("")
+                  if (path) applyDirectory(path)
+                }
+                if (event.key === "Escape") {
+                  // Ce champ consomme Échap : le global ne doit pas interrompre l'agent par-dessus.
+                  event.stopPropagation()
+                  // Fermer un filtre le retire aussi : une liste filtrée sans champ visible ne
+                  // dirait plus pourquoi elle est courte.
+                  setHeadMode("none")
+                  setHeadDraft("")
+                  setQuery("")
+                }
+              }}
+            />}>
+              <span class="rail-label">workspaces</span>
+            </Show>
+            {/* Les deux boutons **restent visibles quand le champ est ouvert**, et celui qui a ouvert
+                le champ le referme : la première version les cachait derrière l'input, donc la
+                recherche ouverte n'avait plus aucun moyen d'être fermée à la souris (défaut relevé
+                le 2026-10-15). Un geste qui ouvre doit être le même qui ferme. */}
+            <span class="ws-actions">
+              <button
+                class="icon-btn"
+                classList={{ active: headMode() === "search" }}
+                title={headMode() === "search" ? "Close search" : "Search sessions"}
+                aria-label={headMode() === "search" ? "Close search" : "Search sessions"}
+                onClick={() => {
+                  setHeadDraft("")
+                  if (headMode() === "search") {
+                    setHeadMode("none")
+                    setQuery("")
+                  } else setHeadMode("search")
+                }}
+              >
+                <Show when={headMode() === "search"} fallback={<SearchIcon size={16} />}>
+                  <CrossIcon size={16} />
+                </Show>
+              </button>
+              <button
+                class="icon-btn"
+                classList={{ active: headMode() === "add" }}
+                title={headMode() === "add" ? "Cancel" : "Add a workspace folder"}
+                aria-label={headMode() === "add" ? "Cancel" : "Add a workspace folder"}
+                onClick={() => {
+                  setQuery("")
+                  setHeadDraft("")
+                  setHeadMode(headMode() === "add" ? "none" : "add")
+                }}
+              >
+                <Show when={headMode() === "add"} fallback={<FolderPlusIcon size={16} />}>
+                  <CrossIcon size={16} />
+                </Show>
+              </button>
+            </span>
+          </div>
 
           <Show when={headMode() === "add"}>
             <FolderBrowser
@@ -2493,6 +2688,69 @@ export default function App() {
                                   setMenuOpen(undefined)
                                   void selectSession(session.id)
                                 }}
+                <>
+                  <WorkspaceGroup
+                  label={group.label}
+                  hint={group.hint}
+                  current={group.current}
+                  onToggle={() => toggleGroup(group.key)}
+                  onNew={() => newSessionIn(group.hint)}
+                  menuOpen={wsMenu() === group.key}
+                  onMenu={() => setWsMenu(wsMenu() === group.key ? undefined : group.key)}
+                  onRename={() => startRenameProject(group)}
+                  renaming={renamingProject() === group.key}
+                >
+                  <input
+                    class="rename"
+                    autofocus
+                    value={projectDraft()}
+                    onInput={(event) => setProjectDraft(event.currentTarget.value)}
+                    onBlur={() => void commitProjectRename()}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") void commitProjectRename()
+                      if (event.key === "Escape") {
+                        event.stopPropagation()
+                        setRenamingProject(undefined)
+                      }
+                    }}
+                  />
+                </WorkspaceGroup>
+                <Show when={groupOpen(group.key)}>
+                    <For each={split().shown}>
+                    {(session) => (
+                      <Show
+                        when={renaming() === session.id}
+                        fallback={
+                          <SessionRow
+                            title={session.title || "(untitled)"}
+                            hint={[
+                              session.title || "(untitled)",
+                              ...sessionDetails(session).map((line) => `${line.label} : ${line.value}`),
+                            ].join("\n")}
+                            time={sessionTimestamp(session)}
+                            now={now()}
+                            active={session.id === active()}
+                            onSelect={() => {
+                              setMenuOpen(undefined)
+                              void selectSession(session.id)
+                            }}
+                          >
+                            <span class="row-actions">
+                              <Show
+                                when={menuOpen() === session.id}
+                                fallback={
+                                  <button
+                                    class="ghost row-menu-trigger"
+                                    title="Actions"
+                                    aria-label="Session actions"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setMenuOpen(session.id)
+                                    }}
+                                  >
+                                    …
+                                  </button>
+                                }
                               >
                                 <span class="row-actions">
                                   <Show
@@ -2579,6 +2837,25 @@ export default function App() {
                       </For>
                       <Show when={split().hidden > 0}>
                         <SidebarReadMore hidden={split().hidden} expanded={false} onToggle={() => toggleMore(group.key)} />
+                              </Show>
+                            </span>
+                          </SessionRow>
+                        }
+                      >
+                        <input
+                          class="rename"
+                          autofocus
+                          value={renameDraft()}
+                          onInput={(event) => setRenameDraft(event.currentTarget.value)}
+                          onBlur={commitRename}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") void commitRename()
+                            if (event.key === "Escape") {
+                              event.stopPropagation()
+                              setRenaming(undefined)
+                            }
+                          }}
+                        />
                       </Show>
                       <Show when={Boolean(moreOpen()[group.key]) && group.sessions.length > SESSION_LIMIT}>
                         <SidebarReadMore hidden={0} expanded={true} onToggle={() => toggleMore(group.key)} />
@@ -2816,6 +3093,14 @@ export default function App() {
               </div>
             </div>
             <ComposerStats stats={stats()} contextLimit={modelLimits()[composerModel()]} working={working()} />
+            {/* Les raccourcis du tour en cours, dits pendant qu'ils s'appliquent (maquette `status`). */}
+            <Show when={working()}>
+              <div class="shortcut-hints" aria-label="Raccourcis pendant le travail">
+                <span><kbd>esc</kbd> interrompre</span>
+                <span><kbd>enter</kbd> file d'attente</span>
+                <span><kbd>alt+s</kbd> steer</span>
+              </div>
+            </Show>
           </form>
           </Show>
         </Show>
@@ -2845,6 +3130,10 @@ export default function App() {
           </Show>
         </div>
       </aside>
+
+      <Show when={paletteOpen()}>
+        <ShortcutPalette commands={paletteCommands()} onClose={() => setPaletteOpen(false)} />
+      </Show>
 
       <Show when={configOpen()}>
         <SettingsSheet
