@@ -1,0 +1,380 @@
+/**
+ * Le tiroir de décisions fermé est translateX(100 %) : sans clip, il étend `scrollWidth` de sa
+ * propre largeur et crée un défilement horizontal (mesuré : 2280 px pour 1920 px de viewport).
+ * `position: fixed` (menus, dialogues) n'est pas affecté par ce clip.
+ */
+.layout {
+  overflow: hidden;
+}
+
+/**
+ * Panneau droit — styles isolés, chargés après `styles.css` par l'import de `right-panel.tsx`.
+ *
+ * Calqués sur `docs/design/maquette-opencodev2-ui.html` § « Panneau droit », en traduisant les
+ * jetons de la maquette (`--tx`, `--panel`, `--raise-2`…) vers ceux du webui (`--text-*`, `--bg-*`,
+ * `--line-*`). Préfixe `rp-` pour ne rien écraser dans la feuille globale.
+ */
+.rpanel {
+  /* La maquette porte un vert de succès que le webui n'a pas encore en jeton. */
+  --rp-green: #7ee787;
+
+  /* Troisième colonne de `.layout`, partagée avec le tiroir `.side`. */
+  grid-column: 3;
+  grid-row: 1;
+
+  display: none;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg-1);
+  border: 1px solid var(--line-1);
+  border-radius: 14px 14px 0 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+  padding: 6px 16px 16px;
+}
+
+.rpanel.is-open {
+  display: flex;
+}
+
+/* Le tiroir de décisions partage la même cellule : les deux sont pilotés par des signaux
+   distincts, mais un seul doit occuper la troisième colonne à la fois. */
+.layout > .side {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+/* La maquette masque le panneau sous 1100 px, quelle que soit la bascule. */
+@media (max-width: 1100px) {
+  .rpanel.is-open {
+    display: none;
+  }
+}
+
+/* ---- Sections repliables ---- */
+.rp-rs {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line-1);
+}
+
+.rp-rs:has(+ .rp-rfoot) {
+  border-bottom: 0;
+}
+
+.rp-rh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rp-rh b {
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.rp-n {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.rp-c {
+  display: inline-block;
+  transition: transform var(--duree-normal) var(--courbe-entree-sortie);
+}
+
+.rp-rs.shut .rp-c {
+  transform: rotate(-90deg);
+}
+
+.rp-rs.shut .rp-rb {
+  display: none;
+}
+
+.rp-pill {
+  font: 600 10.5px var(--mono);
+  padding: 2px 7px;
+  border-radius: 99px;
+  border: 1px solid var(--line-2);
+  color: var(--text-2);
+}
+
+/* ---- Contenu ---- */
+.rp-goal {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-1);
+  margin-bottom: 6px;
+}
+
+.rp-kv {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-kv b {
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.rp-bar {
+  height: 5px;
+  border-radius: 99px;
+  background: var(--bg-2);
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+.rp-bar i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  background: var(--text-2);
+  transition: transform var(--duree-normal) var(--courbe-entree-sortie);
+}
+
+.rp-mcpr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  min-height: 23px;
+  color: var(--text-1);
+}
+
+.rp-mcpr::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--rp-green);
+  flex: none;
+}
+
+.rp-mcpr.off::before {
+  background: var(--text-3);
+}
+
+.rp-mcpr.off {
+  color: var(--text-3);
+}
+
+.rp-mcpr em {
+  margin-left: auto;
+  font-style: normal;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.rp-gl {
+  font-size: 12px;
+  color: var(--text-2);
+  padding: 2px 0 2px 14px;
+  position: relative;
+}
+
+.rp-gl::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 9px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.rp-gl.empty {
+  color: var(--text-3);
+}
+
+.rp-gh {
+  font: 600 10.5px var(--font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin: 8px 0 3px;
+}
+
+.rp-ga {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.rp-gb {
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid var(--line-2);
+  background: none;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--duree-rapide, 160ms) var(--courbe-entree-sortie), color var(--duree-rapide, 160ms);
+}
+
+.rp-gb:hover:not(:disabled) {
+  background: var(--bg-2);
+  color: var(--text-1);
+}
+
+.rp-gb:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.rp-todo {
+  display: flex;
+  gap: 9px;
+  font-size: 12px;
+  color: var(--text-2);
+  padding: 4px 0;
+  line-height: 1.4;
+}
+
+.rp-todo .rp-bx {
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid var(--text-3);
+  border-radius: 4px;
+  flex: none;
+  margin-top: 2px;
+  display: grid;
+  place-items: center;
+}
+
+.rp-todo em {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.rp-todo.ip {
+  color: var(--text-1);
+}
+
+.rp-todo.ip .rp-bx {
+  border-color: var(--attention);
+  background: radial-gradient(circle, var(--attention) 35%, transparent 40%);
+}
+
+.rp-todo.dn {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.rp-todo.dn .rp-bx {
+  background: var(--text-3);
+  border-color: var(--text-3);
+}
+
+.rp-rfoot {
+  margin-top: auto;
+  padding-top: 14px;
+  font: 11.5px var(--mono);
+  color: var(--text-3);
+  line-height: 1.8;
+  border-top: 1px solid var(--line-1);
+}
+
+.rp-rfoot b {
+  color: var(--text-2);
+  font-weight: 400;
+}
+
+/* ---- Édition du contrat et erreurs ---- */
+.rp-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.rp-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+
+.rp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.rp-field textarea,
+.rp-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg-1);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.rp-add {
+  align-self: flex-start;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px dashed var(--line-2);
+  border-radius: 6px;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.rp-editor-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* ---- Clavier / focus ---- */
+.rp-rh:focus-visible,
+.rp-gb:focus-visible,
+.rp-add:focus-visible,
+.rp-field textarea:focus-visible,
+.rp-field input:focus-visible {
+  outline: 2px solid var(--text-2);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rp-c,
+  .rp-bar i,
+  .rp-gb {
+    transition-duration: 0.01ms !important;
+  }
+}
