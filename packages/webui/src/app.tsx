@@ -52,6 +52,8 @@ import {
   ThoughtRow,
   toolDuration,
 } from "./conversation"
+import { type ModeCiel } from "./ciel-moteur"
+import CielEtoile from "./CielEtoile"
 import {
   AgentsSection,
   GeneralSection,
@@ -3191,6 +3193,11 @@ export default function App() {
     return undefined
   }
 
+  const modeCiel = (): ModeCiel => {
+    const valeur = (config() as Record<string, string>)["ciel"] ?? "activé"
+    return valeur as ModeCiel
+  }
+
   return (
     <>
       {/* Fond : canvas derrière la charpente, vignettage CSS statique. Les
@@ -3201,6 +3208,10 @@ export default function App() {
         <aside class="rail">
     <div class="layout" style={layoutStyle()}>
       <aside class="rail glass-rail">
+      {/* Le ciel étoilé est derrière toute l'interface : il ne bloque aucun clic. */}
+      <CielEtoile mode={modeCiel()} />
+
+      <aside class="rail">
         <div class="grip" onPointerDown={startSidebarDrag} />
 
         <SidebarLogo />

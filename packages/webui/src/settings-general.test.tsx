@@ -95,6 +95,7 @@ describe("la page General", () => {
       "Defaults",
       "Identity",
       "Environment",
+      "Defaults",
     ])
     expect(container.innerHTML).not.toContain("Working directory")
     dispose()
@@ -112,8 +113,9 @@ describe("la page General", () => {
       "Small model",
       "Default agent",
       "Shell",
+      "Sky",
     ])
-    for (const label of ["Default model", "Small model", "Default agent", "Shell"]) {
+    for (const label of ["Default model", "Small model", "Default agent", "Shell", "Sky"]) {
       // Le contrôle est un **bouton** qui ouvre une liste : il n'y a rien à recopier, donc rien à
       // recopier faux. Et rien à saisir, donc aucun champ au repos.
       expect(control(label)?.querySelector(".pick-trigger")?.tagName).toBe("BUTTON")

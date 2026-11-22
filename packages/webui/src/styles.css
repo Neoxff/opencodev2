@@ -200,6 +200,18 @@ textarea {
   outline: none;
 }
 
+/* ---- Ciel étoilé derrière l'interface (docs/design/20-ciel-etoile.md) ----
+   z-index le plus bas, ne bloque aucun clic, couvre le plein écran. Le verre
+   (Build 6) le rendra visible à travers les panneaux translucides. ---- */
+
+.ciel {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  display: block;
+}
+
 /* ---- Charpente : trois pistes, la troisième à 0 tant qu'aucune décision n'est attendue ---- */
 
 .layout {
