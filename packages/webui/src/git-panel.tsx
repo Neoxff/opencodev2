@@ -196,6 +196,22 @@ export function GitPanel(props: { lang?: Langue } = {}) {
               ? "Jeton local absent"
               : erreur()
                 ? libelleErreur(erreur()!)
+            {erreur() === "NON_DISPONIBLE"
+              ? "Jeton local absent"
+              : erreur()
+                ? (
+                  <div class="git-erreur" role="alert">
+                    <span class="git-erreur-message">{libelleErreur(erreur()!)}</span>
+                    <button
+                      class="git-erreur-action"
+                      title="Réessayer (actualiser l'état)"
+                      aria-label="Réessayer"
+                      onClick={() => void actualiser()}
+                    >
+                      ↻
+                    </button>
+                  </div>
+                )
                 : "Chargement du dépôt…"}
           </div>
         }

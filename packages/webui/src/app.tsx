@@ -157,6 +157,7 @@ import {
   type Agent,
   type McpState,
 } from "./config"
+import EcranAccueil from "./EcranAccueil"
 import { injectionPhase, parseInjections, relativeTo } from "./injections"
 import { pluginEntries, type PluginList } from "./nav"
 import { SESSION_LIMIT, groupByWorkspace, sessionDetails, splitSessions, type ProjectRef, type SessionSummary, type WorkspaceGroup as WorkspaceGrouping } from "./sessions"
@@ -3673,6 +3674,28 @@ export default function App() {
           <Show when={columns().sidebar === 0}>
             <button class="ghost" title="Show sessions" onClick={toggleSidebar}>
               ☰
+        <Show
+          when={active()}
+          fallback={<div class="accueil-couche"><EcranAccueil />{renderHome()}</div>}
+        >
+          {/* La barre des **vues**, au-dessus du chat. Elle commute le contenu du panneau principal
+              — la conversation ou le journal — comme les dialogues du TUI. Elle est ici, et non dans
+              le rail, parce que c'est le contenu du chat qu'elle remplace : on la cherche là où l'on
+              regarde. */}
+          <nav class="view-nav">
+            <button class="view-item" classList={{ active: view() === "chat" }} onClick={() => setView("chat")}>
+              Chat
+            </button>
+            <button
+              class="view-item"
+              classList={{ active: view() === "logs" }}
+              onClick={() => {
+                setView("logs")
+                // Le schéma des outils se lit **ici** : 61 ko ne se paient pas au montage.
+                void loadToolSchemas()
+              }}
+            >
+              Trajectory
             </button>
           </Show>
           <Show when={notice()}>
