@@ -59,6 +59,7 @@ import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "@/server/cors
 import { serveUIEffect } from "@/server/shared/ui"
 import { logsPageHtml } from "@/server/shared/logs-page"
 import { ServerAuth } from "@/server/auth"
+import { commandRoutes } from "./command-routes"
 import { gitRoutes } from "./git-routes"
 import { healthRoutes } from "./health-routes"
 import { InstanceHttpApi, RootHttpApi } from "./api"
@@ -209,7 +210,17 @@ type RouteRequirements =
 export function createRoutes(
   corsOptions?: CorsOptions,
 ): Layer.Layer<never, EffectConfig.ConfigError | Provider.ModelNotFoundError, RouteRequirements> {
-  return Layer.mergeAll(rootApiRoutes, eventApiRoutes, instanceRoutes, docRoute, logsRoute, gitRoutes, healthRoutes, uiRoute).pipe(
+  return Layer.mergeAll(
+    rootApiRoutes,
+    eventApiRoutes,
+    instanceRoutes,
+    docRoute,
+    logsRoute,
+    gitRoutes,
+    healthRoutes,
+    commandRoutes,
+    uiRoute,
+  ).pipe(
     Layer.provide([
       errorLayer,
       compressionLayer,
