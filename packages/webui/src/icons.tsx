@@ -389,3 +389,44 @@ const SETTING_SHAPES: Record<SettingIconName, () => JSX.Element> = {
 export function SettingIcon(props: { name: SettingIconName; size?: number }) {
   return <Glyph size={props.size ?? 13}>{SETTING_SHAPES[props.name]()}</Glyph>
 }
+
+/* ---- Icônes du rail de la maquette ---- */
+
+/** Nouvelle session : une feuille et un crayon — le geste, pas le signe générique « plus ». */
+export function NewSessionIcon(props: { size?: number }) {
+  return (
+    <Glyph size={props.size ?? 14}>
+      <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z" />
+    </Glyph>
+  )
+}
+
+/** Réduire : le double chevron de la maquette. */
+export function CollapseIcon(props: { size?: number }) {
+  return (
+    <Glyph size={props.size ?? 14}>
+      <path d="m11 17-5-5 5-5M18 17l-5-5 5-5" />
+    </Glyph>
+  )
+}
+
+/** Archived : une boîte fermée. */
+export function ArchiveIcon(props: { size?: number }) {
+  return (
+    <Glyph size={props.size ?? 14}>
+      <rect x="3" y="4" width="18" height="4" rx="1" />
+      <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4" />
+    </Glyph>
+  )
+}
+
+/** Server : les curseurs de la maquette. */
+export function ServerIcon(props: { size?: number }) {
+  return (
+    <Glyph size={props.size ?? 14}>
+      <path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1" />
+      <path d="M15 4v4M9 10v4M17 16v4" />
+    </Glyph>
+  )
+}

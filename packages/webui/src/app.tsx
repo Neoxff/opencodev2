@@ -34,13 +34,10 @@ import {
   Prose,
   QuestionSheet,
   Reasoning,
-  ShowMore,
-  SessionRow,
   Spinner,
   ToolLine,
   Turn,
   UserPrompt,
-  WorkspaceGroup,
 } from "./components"
 import {
   AgentsSection,
@@ -87,7 +84,7 @@ import {
 } from "./settings"
 import { FolderPicker, Picker } from "./picker"
 import { FolderBrowser } from "./folder-browser"
-import { CrossIcon, FolderPlusIcon, GearIcon, PluginIcon, PlusIcon, SearchIcon, SendIcon } from "./icons"
+import { PlusIcon, SendIcon } from "./icons"
 import { TrajectoryView } from "./trajectory-view"
 import {
   commandChoices,
@@ -118,18 +115,28 @@ import { injectionPhase, parseInjections, relativeTo } from "./injections"
 import { pluginEntries, type PluginList } from "./nav"
 import { SESSION_LIMIT, groupByWorkspace, sessionDetails, splitSessions, type ProjectRef, type SessionSummary, type WorkspaceGroup as WorkspaceGrouping } from "./sessions"
 import { subscribeEvents, type EventStreamState } from "./events"
-import { GitPanel } from "./git-panel"
-import RessourcesPanel from "./ressources-panel"
 import { gitApi } from "./git-client"
 import {
-  activityFromStatus,
   createReloadGate,
   createTicketGuard,
   createLatestGate,
   resyncPlan,
   threadEventOutcome,
 } from "./stream-sync"
-import { sessionTimestamp } from "./time"
+import { relativeTime, sessionTimestamp } from "./time"
+import {
+  SidebarActions,
+  SidebarFolder,
+  SidebarFooter,
+  SidebarHistory,
+  SidebarLogo,
+  SidebarNewSession,
+  SidebarReadMore,
+  SidebarSession,
+  groupLatestTime,
+  recentSessions,
+  sessionActivityMap,
+} from "./sidebar"
 import {
   answerDocuments,
   dropPermission,
@@ -173,6 +180,8 @@ export default function App() {
   const [stream, setStream] = createSignal<EventStreamState>({ connected: false, reconnects: 0 })
   /** L'agent travaille : le serveur le dit (`session.status` → `busy`), on ne le devine pas. */
   const [working, setWorking] = createSignal(false)
+  /** L'activité **par session**, lue sur `GET /session/status` puis tenue par les événements. */
+  const [sessionBusy, setSessionBusy] = createSignal<Record<string, boolean>>({})
   /**
    * L'identité des tours, gardée **entre deux rendus** : un tour dont les messages n'ont pas bougé
    * est rendu tel quel, et Solid garde donc ses nœuds (mesuré : sans ce cache, l'animation d'entrée
@@ -466,6 +475,9 @@ export default function App() {
   const [plugins, setPlugins] = createSignal<PluginList | undefined>()
   // « voir plus » par dossier : replier est l'état par défaut, déplier est un geste explicite.
   const [moreOpen, setMoreOpen] = createSignal<Record<string, boolean>>({})
+  /** L'historique et les archives ne sont pas des panneaux permanents : ils s'ouvrent sur geste. */
+  const [historyOpen, setHistoryOpen] = createSignal(false)
+  const [archivedOpen, setArchivedOpen] = createSignal(false)
 
   /**
    * Les identifiants du serveur — **lus** ici, écrits par le bloc `Server` de `General`.
@@ -1005,7 +1017,9 @@ export default function App() {
     }).catch(() => undefined)
     if (!response?.ok) return
     const data = (await response.json().catch(() => undefined)) as unknown
-    setWorking(activityFromStatus(data, active()))
+    const busy = sessionActivityMap(data)
+    setSessionBusy(busy)
+    setWorking(Boolean(busy[active() ?? ""]))
   }
 
   const loadPermissions = async () => {
@@ -1229,12 +1243,6 @@ export default function App() {
   const openConfig = () => {
     setConfigOpen(true)
     void loadSettings(settingsSection())
-  }
-
-  /** L'entrée `plugins` du rail **ouvre** la section où ils s'ajoutent et se retirent. */
-  const openPlugins = () => {
-    selectSection("plugins")
-    setConfigOpen(true)
   }
 
   const selectSection = (key: SettingsSectionKey) => {
@@ -1812,8 +1820,11 @@ export default function App() {
         else if (outcome?.kind === "resync" && sessionID) reloadThread(sessionID)
         if (event.type === "session.status" || event.type === "session.idle") {
           const properties = (event.properties ?? {}) as { sessionID?: string; status?: { type?: string } }
+          const occupe = properties.status?.type === "busy"
+          if (properties.sessionID) {
+            setSessionBusy((current) => ({ ...current, [properties.sessionID!]: occupe }))
+          }
           if (properties.sessionID === active()) {
-            const occupe = properties.status?.type === "busy"
             // Fin d'une série de modifications : l'auto-commit/push est
             // désactivé par défaut et vérifié côté serveur (aucune action sur main).
             if (working() && !occupe && properties.sessionID) {
@@ -2146,116 +2157,51 @@ export default function App() {
       <aside class="rail">
         <div class="grip" onPointerDown={startSidebarDrag} />
 
-        {/* Le nom du produit. Le nom est en discussion — « opencodev2 » évoque un agent de codage,
-            pas un généraliste : on garde la place, sans inventer de marque. */}
-        <div class="rail-head">
-          <span class="wordmark">opencodev2</span>
-          <span class="wordmark-badge">HARNESS</span>
-        </div>
+        <SidebarLogo />
 
-        {/* 1 — Le geste le plus fréquent, donc en premier et sans clic. */}
         <div class="rail-new">
-          {/* Reproduit de DSH : un bouton **plein, pleine largeur, libellé centré**, avec l'icône
-              **avant** le texte. Le nôtre portait le signe à gauche et le mot collé à gauche sous un
-              filet — trois écarts pour un même bouton. */}
-          <button class="new-session" title="Start an empty conversation" onClick={() => void createSession()}>
-            <PlusIcon size={15} />
-            <span>New Session</span>
-          </button>
+          <SidebarNewSession onClick={() => void createSession()} />
         </div>
 
-        {/* Les plugins, en **une** entrée qui ouvre. Mesuré le 2026-10-14 : les lignes par plugin
-            portaient toutes la même icône générique et n'ouvraient rien (`onRun` jamais fourni) —
-            une liste de noms sans action. La règle : seuls les plugins qui ont un panneau se
-            montrent ici ; aucun n'en a aujourd'hui, donc l'entrée mène là où ils se configurent. */}
-        <Show when={pluginEntries(plugins()).length > 0}>
-          <div class="rail-plugins">
-            <button class="rail-entry" title="Plugins: add or remove one" onClick={openPlugins}>
-              <PluginIcon size={16} />
-              <span class="rail-entry-label">Plugins</span>
-            </button>
-          </div>
-        </Show>
-
-        {/* B — Workspaces : la seule partie qui défile. Le libellé **nomme** le groupe, comme dans
-            la référence : sans lui, la recherche flottait au-dessus d'une liste de dossiers dont
-            rien ne disait ce qu'ils étaient. */}
         <div class="rail-workspaces">
-          {/* La ligne du libellé porte les **deux gestes de premier niveau** — chercher, ajouter —
-              et devient le champ correspondant. Au repos elle n'est qu'un libellé : ce qui est rare
-              ne s'affiche pas (§8), et ces deux fonctions se trouvent là où on les cherche. */}
-          <div class="ws-head">
-            <Show when={headMode() === "none"} fallback={<input
-              class="ws-input"
-              autofocus
-              placeholder={headMode() === "search" ? "Search sessions" : "path to a project folder"}
-              aria-label={headMode() === "search" ? "Search sessions" : "path to a project folder"}
-              value={headMode() === "search" ? query() : headDraft()}
-              onInput={(event) =>
-                headMode() === "search" ? setQuery(event.currentTarget.value) : setHeadDraft(event.currentTarget.value)
-              }
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  const path = headMode() === "add" ? headDraft().trim() : ""
-                  setHeadMode("none")
-                  setHeadDraft("")
-                  if (path) applyDirectory(path)
-                }
-                if (event.key === "Escape") {
-                  // Fermer un filtre le retire aussi : une liste filtrée sans champ visible ne
-                  // dirait plus pourquoi elle est courte.
-                  setHeadMode("none")
-                  setHeadDraft("")
-                  setQuery("")
-                }
-              }}
-            />}>
-              <span class="rail-label">workspaces</span>
-            </Show>
-            {/* Les deux boutons **restent visibles quand le champ est ouvert**, et celui qui a ouvert
-                le champ le referme : la première version les cachait derrière l'input, donc la
-                recherche ouverte n'avait plus aucun moyen d'être fermée à la souris (défaut relevé
-                le 2026-10-15). Un geste qui ouvre doit être le même qui ferme. */}
-            <span class="ws-actions">
-              <button
-                class="icon-btn"
-                classList={{ active: headMode() === "search" }}
-                title={headMode() === "search" ? "Close search" : "Search sessions"}
-                aria-label={headMode() === "search" ? "Close search" : "Search sessions"}
-                onClick={() => {
-                  setHeadDraft("")
-                  if (headMode() === "search") {
-                    setHeadMode("none")
-                    setQuery("")
-                  } else setHeadMode("search")
-                }}
-              >
-                <Show when={headMode() === "search"} fallback={<SearchIcon size={16} />}>
-                  <CrossIcon size={16} />
-                </Show>
-              </button>
-              <button
-                class="icon-btn"
-                classList={{ active: headMode() === "add" }}
-                title={headMode() === "add" ? "Cancel" : "Add a workspace folder"}
-                aria-label={headMode() === "add" ? "Cancel" : "Add a workspace folder"}
-                onClick={() => {
-                  setQuery("")
-                  setHeadDraft("")
-                  setHeadMode(headMode() === "add" ? "none" : "add")
-                }}
-              >
-                <Show when={headMode() === "add"} fallback={<FolderPlusIcon size={16} />}>
-                  <CrossIcon size={16} />
-                </Show>
-              </button>
-            </span>
-          </div>
+          <SidebarActions
+            query={query()}
+            headDraft={headDraft()}
+            searchOpen={headMode() === "search"}
+            addOpen={headMode() === "add"}
+            historyOpen={historyOpen()}
+            onQuery={setQuery}
+            onHeadDraft={setHeadDraft}
+            onSearch={() => {
+              setHistoryOpen(false)
+              setHeadDraft("")
+              setHeadMode(headMode() === "search" ? "none" : "search")
+            }}
+            onAddFolder={() => {
+              setHistoryOpen(false)
+              setQuery("")
+              setHeadDraft("")
+              setHeadMode(headMode() === "add" ? "none" : "add")
+            }}
+            onHistory={() => {
+              setHeadMode("none")
+              setHistoryOpen(!historyOpen())
+            }}
+            onCollapse={toggleSidebar}
+            onAddSubmit={() => {
+              const path = headDraft().trim()
+              setHeadMode("none")
+              setHeadDraft("")
+              if (path) applyDirectory(path)
+            }}
+            onEscape={() => {
+              setHeadMode("none")
+              setHeadDraft("")
+              setQuery("")
+              setHistoryOpen(false)
+            }}
+          />
 
-          {/* Le mode « ajouter » **est** la demande de choisir un dossier : le parcours s'affiche
-              donc ici, et il n'y a pas de troisième bouton à ajouter à la ligne du libellé. On
-              regarde les dossiers au lieu de taper leur chemin — et le chemin tapé reste possible
-              par le champ au-dessus, pour qui le connaît déjà. */}
           <Show when={headMode() === "add"}>
             <FolderBrowser
               start={directory() || serverPath() || ""}
@@ -2266,177 +2212,175 @@ export default function App() {
             />
           </Show>
 
+          <Show when={historyOpen()}>
+            <SidebarHistory
+              sessions={recentSessions(sessions())}
+              now={now()}
+              onSelect={(id) => {
+                setHistoryOpen(false)
+                void selectSession(id)
+              }}
+            />
+          </Show>
+
           <div class="rows">
-          <For each={groupByWorkspace(sessions(), projects(), directory())}>
+            <For each={groupByWorkspace(sessions(), projects(), directory())}>
               {(group) => {
                 const split = () => splitSessions(group.sessions, Boolean(moreOpen()[group.key]))
                 return (
-                <>
-                  <WorkspaceGroup
-                  label={group.label}
-                  hint={group.hint}
-                  current={group.current}
-                  onToggle={() => toggleGroup(group.key)}
-                  onNew={() => newSessionIn(group.hint)}
-                  menuOpen={wsMenu() === group.key}
-                  onMenu={() => setWsMenu(wsMenu() === group.key ? undefined : group.key)}
-                  onRename={() => startRenameProject(group)}
-                  renaming={renamingProject() === group.key}
-                >
-                  <input
-                    class="rename"
-                    autofocus
-                    value={projectDraft()}
-                    onInput={(event) => setProjectDraft(event.currentTarget.value)}
-                    onBlur={() => void commitProjectRename()}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") void commitProjectRename()
-                      if (event.key === "Escape") setRenamingProject(undefined)
-                    }}
-                  />
-                </WorkspaceGroup>
-                <Show when={groupOpen(group.key)}>
-                    <For each={split().shown}>
-                    {(session) => (
-                      <Show
-                        when={renaming() === session.id}
-                        fallback={
-                          <SessionRow
-                            title={session.title || "(untitled)"}
-                            hint={[
-                              session.title || "(untitled)",
-                              ...sessionDetails(session).map((line) => `${line.label} : ${line.value}`),
-                            ].join("\n")}
-                            time={sessionTimestamp(session)}
-                            now={now()}
-                            active={session.id === active()}
-                            onSelect={() => {
-                              setMenuOpen(undefined)
-                              void selectSession(session.id)
-                            }}
-                          >
-                            <span class="row-actions">
-                              <Show
-                                when={menuOpen() === session.id}
-                                fallback={
-                                  <button
-                                    class="ghost row-menu-trigger"
-                                    title="Actions"
-                                    aria-label="Session actions"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      setMenuOpen(session.id)
-                                    }}
-                                  >
-                                    …
-                                  </button>
-                                }
+                  <>
+                    <SidebarFolder
+                      label={group.label}
+                      hint={group.hint}
+                      time={relativeTime(groupLatestTime(group), now())}
+                      open={groupOpen(group.key)}
+                      current={group.current}
+                      renaming={renamingProject() === group.key}
+                      menuOpen={wsMenu() === group.key}
+                      onToggle={() => toggleGroup(group.key)}
+                      onNew={() => newSessionIn(group.hint)}
+                      onMenu={() => setWsMenu(wsMenu() === group.key ? undefined : group.key)}
+                      onRename={() => startRenameProject(group)}
+                    >
+                      <input
+                        class="rename"
+                        autofocus
+                        value={projectDraft()}
+                        onInput={(event) => setProjectDraft(event.currentTarget.value)}
+                        onBlur={() => void commitProjectRename()}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") void commitProjectRename()
+                          if (event.key === "Escape") setRenamingProject(undefined)
+                        }}
+                      />
+                    </SidebarFolder>
+                    <Show when={groupOpen(group.key)}>
+                      <For each={split().shown}>
+                        {(session) => (
+                          <Show
+                            when={renaming() === session.id}
+                            fallback={
+                              <SidebarSession
+                                title={session.title || "(untitled)"}
+                                hint={[
+                                  session.title || "(untitled)",
+                                  ...sessionDetails(session).map((line) => `${line.label} : ${line.value}`),
+                                ].join("\n")}
+                                time={relativeTime(sessionTimestamp(session), now())}
+                                busy={Boolean(sessionBusy()[session.id])}
+                                active={session.id === active()}
+                                onSelect={() => {
+                                  setMenuOpen(undefined)
+                                  void selectSession(session.id)
+                                }}
                               >
-                                <span class="row-menu">
-                                  <button
-                                    class="row-menu-item"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      setMenuOpen(undefined)
-                                      startRename(session)
-                                    }}
-                                  >
-                                    Rename
-                                  </button>
+                                <span class="row-actions">
                                   <Show
-                                    when={confirming() === session.id}
+                                    when={menuOpen() === session.id}
                                     fallback={
                                       <button
-                                        class="row-menu-item danger"
+                                        class="ghost row-menu-trigger"
+                                        title="Actions"
+                                        aria-label="Session actions"
                                         onClick={(event) => {
                                           event.stopPropagation()
-                                          setConfirming(session.id)
+                                          setMenuOpen(session.id)
                                         }}
                                       >
-                                        Delete
+                                        …
                                       </button>
                                     }
                                   >
-                                    <button
-                                      class="row-menu-item danger"
-                                      onClick={(event) => {
-                                        event.stopPropagation()
-                                        setMenuOpen(undefined)
-                                        void removeSession(session)
-                                      }}
-                                    >
-                                      Confirm delete
-                                    </button>
-                                    <button
-                                      class="row-menu-item"
-                                      onClick={(event) => {
-                                        event.stopPropagation()
-                                        setConfirming(undefined)
-                                        setMenuOpen(undefined)
-                                      }}
-                                    >
-                                      Cancel
-                                    </button>
+                                    <span class="row-menu">
+                                      <button
+                                        class="row-menu-item"
+                                        onClick={(event) => {
+                                          event.stopPropagation()
+                                          setMenuOpen(undefined)
+                                          startRename(session)
+                                        }}
+                                      >
+                                        Rename
+                                      </button>
+                                      <Show
+                                        when={confirming() === session.id}
+                                        fallback={
+                                          <button
+                                            class="row-menu-item danger"
+                                            onClick={(event) => {
+                                              event.stopPropagation()
+                                              setConfirming(session.id)
+                                            }}
+                                          >
+                                            Delete
+                                          </button>
+                                        }
+                                      >
+                                        <button
+                                          class="row-menu-item danger"
+                                          onClick={(event) => {
+                                            event.stopPropagation()
+                                            setMenuOpen(undefined)
+                                            void removeSession(session)
+                                          }}
+                                        >
+                                          Confirm delete
+                                        </button>
+                                        <button
+                                          class="row-menu-item"
+                                          onClick={(event) => {
+                                            event.stopPropagation()
+                                            setConfirming(undefined)
+                                            setMenuOpen(undefined)
+                                          }}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </Show>
+                                    </span>
                                   </Show>
                                 </span>
-                              </Show>
-                            </span>
-                          </SessionRow>
-                        }
-                      >
-                        <input
-                          class="rename"
-                          autofocus
-                          value={renameDraft()}
-                          onInput={(event) => setRenameDraft(event.currentTarget.value)}
-                          onBlur={commitRename}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") void commitRename()
-                            if (event.key === "Escape") setRenaming(undefined)
-                          }}
-                        />
+                              </SidebarSession>
+                            }
+                          >
+                            <input
+                              class="rename"
+                              autofocus
+                              value={renameDraft()}
+                              onInput={(event) => setRenameDraft(event.currentTarget.value)}
+                              onBlur={commitRename}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") void commitRename()
+                                if (event.key === "Escape") setRenaming(undefined)
+                              }}
+                            />
+                          </Show>
+                        )}
+                      </For>
+                      <Show when={split().hidden > 0}>
+                        <SidebarReadMore hidden={split().hidden} expanded={false} onToggle={() => toggleMore(group.key)} />
                       </Show>
-                    )}
-                  </For>
-                  <Show when={split().hidden > 0}>
-                    <ShowMore hidden={split().hidden} expanded={false} onToggle={() => toggleMore(group.key)} />
-                  </Show>
-                  <Show when={Boolean(moreOpen()[group.key]) && group.sessions.length > SESSION_LIMIT}>
-                    <ShowMore hidden={0} expanded={true} onToggle={() => toggleMore(group.key)} />
-                  </Show>
-                </Show>
-              </>
+                      <Show when={Boolean(moreOpen()[group.key]) && group.sessions.length > SESSION_LIMIT}>
+                        <SidebarReadMore hidden={0} expanded={true} onToggle={() => toggleMore(group.key)} />
+                      </Show>
+                    </Show>
+                  </>
                 )
               }}
-          </For>
+            </For>
           </div>
-
-          {/* Panneau « Dépôt » — état Git du dépôt lié et actions sûres. */}
-          <GitPanel />
-
-          {/* Panneau « Ressources » — santé machine compacte (mémoire, démon, évaluations). */}
-          <RessourcesPanel compact />
         </div>
 
-        {/* 4 — Le pied : les **deux accès**, et rien d'autre.
-            Le sélecteur de dossier est retiré — la ligne « Workspaces » ajoute déjà n'importe quel
-            dossier, et deux contrôles pour un même geste font douter de celui qui agit ; le dossier
-            de travail reste **dit** par le workspace coché, au-dessus.
-            Les deux boutons portent une icône **et** le patron de bouton du rail : sans fond ni
-            filet un mot ne se lit pas comme un bouton, et un mot seul ne dit pas ce qu'il ouvre. */}
-        <div class="rail-foot">
-          <span class="foot-row">
-            <button
-              class="rail-button"
-              classList={{ active: configOpen() }}
-              title="Settings: defaults, providers, agents, MCP"
-              onClick={openConfig}
-            >
-              <GearIcon size={16} />
-              <span>settings</span>
-            </button>
-          </span>
-        </div>
+        <SidebarFooter
+          archivedOpen={archivedOpen()}
+          archivedCount={0}
+          onArchived={() => setArchivedOpen(!archivedOpen())}
+          onServer={openConfig}
+        >
+          <Show when={archivedOpen()}>
+            <div class="side-history-empty">No archived-session endpoint is exposed by the server.</div>
+          </Show>
+        </SidebarFooter>
       </aside>
 
       {/* `busy` nomme l'état pour le CSS : c'est lui qui autorise un mouvement dans le fil (le
