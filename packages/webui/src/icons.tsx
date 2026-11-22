@@ -389,3 +389,32 @@ const SETTING_SHAPES: Record<SettingIconName, () => JSX.Element> = {
 export function SettingIcon(props: { name: SettingIconName; size?: number }) {
   return <Glyph size={props.size ?? 13}>{SETTING_SHAPES[props.name]()}</Glyph>
 }
+
+/* ---- Icônes de l'en-tête de conversation ---- */
+
+export function BackIcon(props: { size?: number }) {
+  return (
+    <Glyph size={props.size ?? 14}>
+      <path d="M20 12H4M12 4l-8 8 8 8" />
+    </Glyph>
+  )
+}
+
+export function RefreshIcon(props: { size?: number }) {
+  return (
+    <Glyph size={props.size ?? 12}>
+      <path d="M20 11a8 8 0 1 0-2.3 5.7L21 13" />
+      <path d="M21 8v5h-5" />
+    </Glyph>
+  )
+}
+
+export function TargetIcon(props: { size?: number }) {
+  return (
+    <Glyph size={props.size ?? 12}>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1.5" />
+    </Glyph>
+  )
+}
