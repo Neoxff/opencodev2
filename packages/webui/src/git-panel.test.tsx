@@ -116,6 +116,25 @@ describe("GitPanel", () => {
     dispose()
   })
 
+  test("erreur connue au chargement : jamais de texte de progression (§2.5)", async () => {
+    vi.mocked(gitApi.status).mockRejectedValue(new ErreurGitApi("NON_FAST_FORWARD", "branches divergentes", 409))
+    const { container, dispose } = mount()
+    await flush()
+    expect(container.textContent).not.toContain("Chargement du dépôt…")
+    expect(container.querySelector('[role="alert"]')).not.toBeNull()
+    expect(container.textContent).toContain("Branches divergentes : fusion manuelle nécessaire.")
+    expect(container.querySelector('button[aria-label="Réessayer"]')).not.toBeNull()
+    expect(container.querySelector(".git-compteurs")).toBeNull()
+    dispose()
+  })
+
+  test("info-bulle de branche courante (§2.2)", async () => {
+    const { container, dispose } = mount()
+    await flush()
+    expect(container.querySelector(".git-branche")?.getAttribute("title")).toBe("Branche courante")
+    dispose()
+  })
+
   test("état divergent après un pull refusé, avec message court et action", async () => {
     vi.mocked(gitApi.pull).mockRejectedValue(new ErreurGitApi("NON_FAST_FORWARD", "branches divergentes", 409))
     const { container, dispose } = mount()

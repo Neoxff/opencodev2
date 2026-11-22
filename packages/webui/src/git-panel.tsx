@@ -156,6 +156,23 @@ export function GitPanel() {
               {erreur() === "NON_DISPONIBLE" ? "Jeton local absent" : "Chargement du dépôt…"}
             </div>
           )
+          <Show when={erreur()} fallback={<div class="git-vide">Chargement du dépôt…</div>}>
+            {(e) => (
+              <div class="git-erreur" role="alert">
+                <span class="git-erreur-message">
+                  {e() === "NON_DISPONIBLE" ? "Jeton local absent" : libelleErreur(e())}
+                </span>
+                <button
+                  class="git-erreur-action"
+                  title="Réessayer (actualiser l'état)"
+                  aria-label="Réessayer"
+                  onClick={() => void actualiser()}
+                >
+                  ↻
+                </button>
+              </div>
+            )}
+          </Show>
         }
       >
         {(s) => (
@@ -164,7 +181,7 @@ export function GitPanel() {
               <span class="git-repo" title={s().repo ?? "dépôt local"}>
                 {s().repo ?? "dépôt local"}
               </span>
-              <span class="git-branche">{s().branch}</span>
+              <span class="git-branche" title="Branche courante">{s().branch}</span>
             </div>
 
             <div class="git-ligne git-compteurs">
