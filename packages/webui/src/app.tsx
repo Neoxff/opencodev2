@@ -85,7 +85,7 @@ import {
   providerPatch,
   toggleModel,
 } from "./settings"
-import { FolderPicker, Picker } from "./picker"
+import { Picker } from "./picker"
 import { FolderBrowser } from "./folder-browser"
 import { CrossIcon, FolderPlusIcon, GearIcon, PluginIcon, PlusIcon, SearchIcon, SendIcon } from "./icons"
 import { TrajectoryView } from "./trajectory-view"
@@ -117,6 +117,8 @@ import {
 import { injectionPhase, parseInjections, relativeTo } from "./injections"
 import { pluginEntries, type PluginList } from "./nav"
 import { SESSION_LIMIT, groupByWorkspace, sessionDetails, splitSessions, type ProjectRef, type SessionSummary, type WorkspaceGroup as WorkspaceGrouping } from "./sessions"
+import { MOTTOS, nextMottoIndex, salutation, type Motto } from "./ouverture"
+import { OpeningScreen } from "./ouverture-screen"
 import { subscribeEvents, type EventStreamState } from "./events"
 import { GitPanel } from "./git-panel"
 import RessourcesPanel from "./ressources-panel"
@@ -169,6 +171,13 @@ export default function App() {
   const [health, setHealth] = createSignal<Health | undefined>()
   const [sessions, setSessions] = createSignal<SessionSummary[]>([])
   const [active, setActive] = createSignal<string | undefined>()
+  /**
+   * Écran d'ouverture : salut selon l'heure et mot d'ordre tirés une fois par
+   * ouverture. L'index du mot d'ordre est mémorisé localement par
+   * `nextMottoIndex` (avec repli aléatoire) ; aucun appel réseau n'est fait.
+   */
+  const [greeting, setGreeting] = createSignal(salutation(new Date()))
+  const [motto, setMotto] = createSignal<Motto>(MOTTOS[nextMottoIndex()]!)
   const [messages, setMessages] = createSignal<Message[]>([])
   const [stream, setStream] = createSignal<EventStreamState>({ connected: false, reconnects: 0 })
   /** L'agent travaille : le serveur le dit (`session.status` → `busy`), on ne le devine pas. */
@@ -971,6 +980,21 @@ export default function App() {
     setMessages(next)
   }
 
+  /**
+   * Revenir à l'accueil : c'est **chaque** retour à « aucune session active »
+   * qui tire un nouveau mot d'ordre, pas seulement le chargement initial.
+   * Le salut est relu aussi, pour suivre l'heure si la page reste ouverte.
+   */
+  const openHome = () => {
+    setActive(undefined)
+    setThread([])
+    setDraft("")
+    setAttachments([])
+    turnCache.clear()
+    setGreeting(salutation(new Date()))
+    setMotto(MOTTOS[nextMottoIndex()]!)
+  }
+
   const reloadThread = (sessionID: string) => {
     reloadGate.request(sessionID, async (key) => {
       const ticket = threadTickets.issue()
@@ -1565,10 +1589,7 @@ export default function App() {
       setError(String(cause))
       return undefined
     })
-    if (active() === session.id) {
-      setActive(undefined)
-      setThread([])
-    }
+    if (active() === session.id) openHome()
     await loadSessions()
   }
 
@@ -1664,9 +1685,7 @@ export default function App() {
     const trimmed = value.trim()
     if (trimmed) localStorage.setItem(DIR_KEY, trimmed)
     else localStorage.removeItem(DIR_KEY)
-    setActive(undefined)
-    setThread([])
-    turnCache.clear()
+    openHome()
     void loadPath()
     void loadSessions()
     void loadPermissions()
@@ -1983,95 +2002,37 @@ export default function App() {
   /**
    * L'accueil, quand **aucune session n'est ouverte**.
    *
-   * Avant, une phrase — « Pick a session, or start one. » — c'est-à-dire du vide avec une consigne.
-   * Or c'est le premier écran qu'on voit, et l'endroit où l'on écrit son premier message : il doit
-   * porter ce qu'il faut pour **commencer**, pas dire où cliquer.
-   *
-   * Le champ **réutilise les classes du compositeur** (`.composer-field`, `.composer-input`,
-   * `.composer-bar`) : le calque du markdown n'est aligné avec le curseur que parce que les deux
-   * partagent leurs métriques. Les redéclarer ici les ferait dériver dès la première retouche d'un
-   * seul côté.
+   * C'est l'écran d'ouverture de la maquette validée : salut selon l'heure, mot
+   * d'ordre local qui tourne à chaque ouverture, composeur monté au centre qui
+   * descend à l'envoi, et puces de reprise construites sur les vraies sessions.
+   * Le composant ne fait aucun appel réseau : tout lui est passé en props.
    */
   const renderHome = () => (
-    <div class="home">
-      <div class="home-inner">
-        <div class="home-head">
-          <h1 class="home-title">Into the Unknown</h1>
-          <p class="home-sub">Describe what you want done. The folder decides which project it joins.</p>
-        </div>
-
-        {/* Le dossier **avant** le champ : c'est lui qui décide à quel projet la session appartiendra,
-            et il ne se change plus sans rouvrir une session. */}
-        <div class="home-picks">
-          <FolderPicker
-            folders={projects().map((project) => (typeof project === "string" ? project : project.path))}
-            value={directory()}
-            placeholder={serverPath()}
-            label="Working directory — the new session joins this project"
-            onChange={applyDirectory}
-          />
-        </div>
-
-        <form class="home-composer" onSubmit={(event) => void sendFromHome(event)}>
-          <div class="composer-field">
-            <ComposerMarkup text={draft()} />
-            <textarea
-              class="composer-input"
-              rows="3"
-              placeholder="Describe what you want to build, / commands, @ files"
-              value={draft()}
-              onInput={(event) => setDraft(event.currentTarget.value)}
-            />
-          </div>
-          <Show when={attachError()}>{(message) => <p class="error">{message()}</p>}</Show>
-          <div class="composer-bar">
-            <label class="attach" title="Attach files">
-              <PlusIcon size={16} />
-              <input
-                class="hidden-input"
-                type="file"
-                multiple
-                onChange={(event) => {
-                  void addFiles(event.currentTarget.files)
-                  // Remis à zéro pour qu'attacher deux fois le même fichier soit possible.
-                  event.currentTarget.value = ""
-                }}
-              />
-            </label>
-            {/* Le modèle et l'agent se choisissent **ici** : ils partent avec le premier message, donc
-                les choisir après coup serait les choisir trop tard. */}
-            <div class="composer-picks">
-              <Picker
-                choices={modelOptions()}
-                value={composerModel()}
-                placeholder="Default model"
-                label="model"
-                onOpen={() => void loadModelCatalog()}
-                onChange={setComposerModel}
-              />
-              <Picker
-                choices={agentOptions()}
-                value={composerAgent()}
-                placeholder="Default agent"
-                label="agent"
-                onOpen={() => void loadAgentOptions()}
-                onChange={setComposerAgent}
-              />
-            </div>
-            <span class="spacer" />
-            <button
-              class="send"
-              type="submit"
-              title="Send"
-              aria-label="Send"
-              disabled={!draft().trim() && attachments().length === 0}
-            >
-              <SendIcon />
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <OpeningScreen
+      salutation={greeting()}
+      motto={motto()}
+      sessions={sessions()}
+      onResume={(session) => void selectSession(session.id)}
+      draft={draft()}
+      onDraft={setDraft}
+      onSubmit={() => void sendFromHome()}
+      attachments={attachments()}
+      attachError={attachError()}
+      onAttach={(files) => void addFiles(files)}
+      onRemoveAttachment={removeAttachment}
+      directory={directory()}
+      projects={projects()}
+      serverPath={serverPath()}
+      onDirectoryChange={applyDirectory}
+      modelOptions={modelOptions()}
+      agentOptions={agentOptions()}
+      composerModel={composerModel()}
+      composerAgent={composerAgent()}
+      onModelChange={setComposerModel}
+      onAgentChange={setComposerAgent}
+      onModelOpen={() => void loadModelCatalog()}
+      onAgentOpen={() => void loadAgentOptions()}
+    />
   )
 
   const renderTurn = (turn: TurnView, index: number = -1) => (
