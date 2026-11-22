@@ -17,47 +17,47 @@ import {
 describe("constantes contractuelles (relevées dans columns.d.ts)", () => {
   test("elles valent celles de DSH", () => {
     expect(CENTER_MIN).toBe(640)
-    expect(SIDEBAR_MIN).toBe(264)
+    expect(SIDEBAR_MIN).toBe(258)
     expect(SIDEBAR_MAX).toBe(420)
-    expect(SIDEBAR_DEFAULT).toBe(280)
+    expect(SIDEBAR_DEFAULT).toBe(258)
     expect(SIDEBAR_COLLAPSED).toBe(56)
     expect(SIDEBAR_AUTO_COLLAPSE).toBe(1024)
     expect(DETAILS_MIN).toBe(300)
     expect(DETAILS_MAX).toBe(520)
-    expect(DETAILS_DEFAULT).toBe(360)
+    expect(DETAILS_DEFAULT).toBe(300)
   })
 })
 
 describe("clampWidth", () => {
   test("borne dans la plage", () => {
-    expect(clampWidth(100, 264, 420)).toBe(264)
-    expect(clampWidth(900, 264, 420)).toBe(420)
-    expect(clampWidth(300, 264, 420)).toBe(300)
+    expect(clampWidth(100, 258, 420)).toBe(258)
+    expect(clampWidth(900, 258, 420)).toBe(420)
+    expect(clampWidth(300, 258, 420)).toBe(300)
   })
 
   test("une valeur non finie retombe sur la borne basse", () => {
-    expect(clampWidth(Number.NaN, 264, 420)).toBe(264)
+    expect(clampWidth(Number.NaN, 258, 420)).toBe(258)
   })
 })
 
 describe("computeColumns — cas nominal", () => {
   test("fenêtre large : chaque colonne prend sa préférence", () => {
-    // 1600 = 280 + centre + 360 → centre 960, au-dessus du plancher
+    // 1600 = 258 + centre + 300 → centre 1042, au-dessus du plancher
     const result = computeColumns(1600, SIDEBAR_DEFAULT, DETAILS_DEFAULT)
-    expect(result).toEqual({ sidebar: 280, center: 960, details: 360 })
+    expect(result).toEqual({ sidebar: 258, center: 1042, details: 300 })
   })
 
   test("sidebar fermée : elle garde son rail, pas zéro", () => {
     const result = computeColumns(1600, 0, DETAILS_DEFAULT)
     expect(result.sidebar).toBe(SIDEBAR_COLLAPSED)
-    expect(result.details).toBe(360)
-    expect(result.center).toBe(1600 - 56 - 360)
+    expect(result.details).toBe(300)
+    expect(result.center).toBe(1600 - 56 - 300)
   })
 
   test("détails fermés : largeur nulle, jamais démontés", () => {
     const result = computeColumns(1600, SIDEBAR_DEFAULT, 0)
     expect(result.details).toBe(0)
-    expect(result.center).toBe(1600 - 280)
+    expect(result.center).toBe(1600 - 258)
   })
 
   test("les préférences hors bornes sont ramenées dans leur plage", () => {
@@ -76,30 +76,30 @@ describe("computeColumns — chaîne de concession", () => {
   })
 
   test("les détails cèdent avant que le centre ne descende sous son plancher", () => {
-    // 1000 = 280 + 640 + 80 → détails réduits à 80 pour tenir le plancher du centre
+    // 1000 = 258 + 640 + 102 → détails réduits à 102 pour tenir le plancher du centre
     const result = computeColumns(1000, SIDEBAR_DEFAULT, DETAILS_DEFAULT)
     expect(result.center).toBe(CENTER_MIN)
-    expect(result.details).toBe(1000 - 280 - CENTER_MIN)
+    expect(result.details).toBe(1000 - 258 - CENTER_MIN)
   })
 
   test("les détails se ferment quand ils ne suffisent plus", () => {
-    // 900 - 280 = 620 < 640 → détails à 0, le centre est servi autant que possible
-    const result = computeColumns(900, SIDEBAR_DEFAULT, DETAILS_DEFAULT)
+    // 890 - 258 = 632 < 640 → détails à 0, le centre est servi autant que possible
+    const result = computeColumns(890, SIDEBAR_DEFAULT, DETAILS_DEFAULT)
     expect(result.details).toBe(0)
-    expect(result.center).toBe(620)
+    expect(result.center).toBe(632)
   })
 
   test("dernier recours : le centre absorbe le déficit restant", () => {
     const result = computeColumns(700, SIDEBAR_DEFAULT, DETAILS_DEFAULT)
     expect(result.details).toBe(0)
-    expect(result.center).toBe(700 - 280)
+    expect(result.center).toBe(700 - 258)
   })
 
   test("propriété de restauration : aucune mémoire, donc ré-élargir restaure", () => {
     // « preferred width preferences are never rewritten » — la même entrée redonne la même sortie,
     // et repasser par une fenêtre étroite ne dégrade pas le résultat suivant.
     const large = computeColumns(1600, SIDEBAR_DEFAULT, DETAILS_DEFAULT)
-    const etroit = computeColumns(900, SIDEBAR_DEFAULT, DETAILS_DEFAULT)
+    const etroit = computeColumns(890, SIDEBAR_DEFAULT, DETAILS_DEFAULT)
     const relarge = computeColumns(1600, SIDEBAR_DEFAULT, DETAILS_DEFAULT)
     expect(etroit.details).toBe(0)
     expect(relarge).toEqual(large)

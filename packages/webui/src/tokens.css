@@ -1,43 +1,68 @@
 /* =============================================================================
-   Jeton — système de design Opencodev2
-   Source de vérité : docs/design/19-tokens.md
-   Thème sombre uniquement. Aucune couleur nouvelle : tout provient de
-   l'échelle `bluish` déjà déclarée dans styles.css ou de valeurs monochromes
-   déjà présentes. Chaque valeur ci-dessous correspond exactement à une valeur
-   déjà utilisée, afin que le remplacement soit à rendement nul.
+   Jetons visuels — Opencodev2 v3
+   Source de vérité : docs/design/maquette-opencodev2-ui.html (validée) et
+   docs/design/reference-opencode-v2.png. Aucune valeur inventée : tout est relevé
+   dans le `:root` de la maquette. Le doc 19-ui-pixel.md annoncé comme prérequis
+   n'existe pas dans le dépôt ; le conflit est consigné dans le rapport de Build 1.
    ============================================================================= */
 
 :root {
-  /* Surfaces — 4 niveaux (famille bluish existante, pas de couleur nouvelle) */
-  --surface-0: #151517; /* bluish-950 — fond de l'application, arrière-plan du ciel */
-  --surface-1: #232324; /* bluish-875 — barre latérale, panneaux latéraux */
-  --surface-2: #2c2c2e; /* bluish-850 — feuilles, tiroir, verre (teinte de base) */
-  --surface-3: #353638; /* bluish-800 — survol actif, verre, sélecteurs */
+  /* Fond, panneaux, surfaces — noir pur, aucun bleu ni violet. */
+  --bg: #000;
+  --side: rgba(0, 0, 0, 0.62);
+  --panel: #0c0c0e;
+  --raise: #131316;
+  --raise-2: #1b1b1f;
 
-  /* Texte — 3 niveaux */
-  --text-1: #f9fafb; /* bluish-50 — contenu principal, titres, saisie */
-  --text-2: #adb2b8; /* bluish-400 — libellés, métadonnées, texte secondaire */
-  --text-3: #8c9697; /* bluish-650 — note, hint, texte désactivé */
+  /* Filets */
+  --line: #222226;
+  --line-2: #2c2c31;
 
-  /* Accent — monochrome conservé (pas de couleur nouvelle) */
-  --accent: #f9fafb;
-  --accent-fort: #ffffff;
-  --accent-doux: #ffffff14;
+  /* Textes */
+  --tx: #ebebed;
+  --tx-2: #a3a3ab;
+  --tx-3: #6c6c75;
 
   /* États */
-  --danger: #f25a5a;
-  --danger-texte: #ff8080;
-  --attention: #f7ad31;
-  --success: #4cc38a;
-  --success-doux: #3fb9501f;
+  --green: #7ee787;
+  --red: #ff7b72;
+  --amber: #e8b155;
 
-  /* Rayons — panneaux à 0 (règle de styles.css:17), échelle pour commandes */
+  /* Typographies */
+  --font: "Inter", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --disp: "Space Grotesk", system-ui, sans-serif;
+  --pix: "Pixelify Sans", "JetBrains Mono", monospace;
+
+  /* Mouvement */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ---- Alias de compatibilité : noms déjà consommés par styles.css et les composants. ---- */
+  --surface-0: var(--bg);
+  --surface-1: var(--panel);
+  --surface-2: var(--raise);
+  --surface-3: var(--raise-2);
+  --text-1: var(--tx);
+  --text-2: var(--tx-2);
+  --text-3: var(--tx-3);
+  --accent: var(--tx);
+  --accent-fort: var(--tx);
+  --accent-doux: rgba(235, 235, 237, 0.08);
+  --danger: var(--red);
+  --danger-texte: var(--red);
+  --attention: var(--amber);
+  --success: var(--green);
+  --success-doux: rgba(126, 231, 135, 0.12);
+
+  /* Rayons */
   --radius-0: 0;
   --radius-4: 4px;
   --radius-6: 6px;
   --radius-8: 8px;
   --radius-10: 10px;
   --radius-12: 12px;
+  --radius-14: 14px;
   --radius-16: 16px;
   --radius-20: 20px;
   --radius-28: 28px;
@@ -52,15 +77,15 @@
   --space-6: 32px;
   --space-7: 48px;
 
-  /* Ombres — une seule ombre douce, deux profondeurs */
+  /* Ombres — conservées pour les feuilles posées au-dessus du fond. */
   --shadow-1: 0 1px 2px #0000001a;
   --shadow-2: 0 8px 24px #00000033;
   --shadow-3: 0 16px 48px #0000004d;
 
-  /* Verre — opacités (consommées par docs/design/22-verre-sobre-web.md) */
-  --glass-opaque: 0.80;
-  --glass-moyen: 0.65;
-  --glass-legger: 0.55;
-  --glass-blur: 16px;
-  --glass-blur-fort: 20px;
+  /* Verre — minimum mesuré dans la maquette pour garder le texte tertiaire AA. */
+  --glass-opaque: 0.88;
+  --glass-moyen: 0.8;
+  --glass-legger: 0.7;
+  --glass-blur: 6px;
+  --glass-blur-fort: 6px;
 }
