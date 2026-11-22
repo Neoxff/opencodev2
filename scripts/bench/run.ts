@@ -7,6 +7,7 @@ import { mesurerDemarrage } from "./demarrage"
 import { mesurerEtoiles } from "./etoiles"
 import { mesurerEvenements } from "./evenements"
 import { mesurerMarkdown } from "./markdown"
+import { mesurerMarkdownProduction } from "./markdown-production"
 import { mesurerRecherche } from "./recherche"
 
 async function temps<T>(nom: string, f: () => Promise<T>): Promise<T> {
@@ -17,10 +18,11 @@ async function temps<T>(nom: string, f: () => Promise<T>): Promise<T> {
   return r
 }
 
-const [etoiles, evenements, markdown, recherche, demarrage] = await Promise.all([
+const [etoiles, evenements, markdown, markdownProduction, recherche, demarrage] = await Promise.all([
   temps("étoiles (Chromium)", mesurerEtoiles),
   temps("événements", mesurerEvenements),
-  temps("markdown", mesurerMarkdown),
+  temps("markdown (marked)", mesurerMarkdown),
+  temps("markdown (parser production)", mesurerMarkdownProduction),
   temps("recherche", mesurerRecherche),
   temps("démarrage web", mesurerDemarrage),
 ])
@@ -34,7 +36,7 @@ const rapport = {
     statistiques: "médiane et p95 sur 10 passages indépendants",
     note: "Aucun changement de comportement de l'application ; banc reproductible via bun scripts/bench/run.ts.",
   },
-  mesures: { etoiles, evenements, markdown, recherche, demarrage },
+  mesures: { etoiles, evenements, markdown, markdownProduction, recherche, demarrage },
 }
 
 const cible = path.join(RACINE, "docs", "perf", "base.json")
