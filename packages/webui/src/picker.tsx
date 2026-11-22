@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
 import { CheckIcon, ChevronIcon, FolderIcon } from "./icons"
 import { folderChoices, folderLabel } from "./folders"
 import type { Choice } from "./settings"
@@ -43,6 +43,12 @@ export function Picker(props: {
    */
   onOpen?: () => void
   onChange: (value: string) => void
+  /** Glyphe placé avant le libellé, pour les contrôles qui portent une icône de nature (agent). */
+  icon?: () => JSX.Element
+  /** Chevauchement droit de la maquette, au lieu du chevron bas des réglages. */
+  chevronRight?: boolean
+  /** Libellé seul, sans fournisseur : la barre de saisie est plus étroite que la feuille de réglages. */
+  compact?: boolean
 }) {
   const [open, setOpen] = createSignal(false)
   const [query, setQuery] = createSignal("")
@@ -83,7 +89,7 @@ export function Picker(props: {
     // Le groupe se recompose ici : dans la liste ouverte il est porté par l'en-tête, mais le contrôle
     // **refermé** n'a pas d'en-tête — un modèle seul y serait ambigu (« Claude 4 » de qui ?), et
     // c'était précisément le défaut corrigé en ajoutant le fournisseur au libellé.
-    if (found) return found.group ? `${found.label} · ${found.group}` : found.label
+    if (found) return props.compact ? found.label : found.group ? `${found.label} · ${found.group}` : found.label
     if (props.value) return props.value
     return props.placeholder ?? "server default"
   }
@@ -207,10 +213,12 @@ export function Picker(props: {
         ref={(element) => (trigger = element)}
         onClick={() => (open() ? close() : show())}
       >
+        <Show when={props.icon}>{(icon) => <span class="pick-icon">{icon()()}</span>}</Show>
         <span class="pick-label">{shown()}</span>
         {/* Un chevron de menu pointe vers le bas en toutes circonstances : `open` est un pliage, pas
-            un menu — on passe donc la valeur qui donne la pointe vers le bas. */}
-        <ChevronIcon size={12} open={true} />
+            un menu — on passe donc la valeur qui donne la pointe vers le bas. La barre de saisie
+            reprend le chevron droit de la maquette. */}
+        <ChevronIcon size={12} open={!props.chevronRight} />
       </button>
 
       <Show when={open()}>
