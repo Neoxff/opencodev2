@@ -118,6 +118,15 @@ import { injectionPhase, parseInjections, relativeTo } from "./injections"
 import { pluginEntries, type PluginList } from "./nav"
 import { SESSION_LIMIT, groupByWorkspace, sessionDetails, splitSessions, type ProjectRef, type SessionSummary, type WorkspaceGroup as WorkspaceGrouping } from "./sessions"
 import { subscribeEvents, type EventStreamState } from "./events"
+import { ConfigTab } from "./config-tab"
+import { LogsTab } from "./logs-tab"
+import {
+  buildConfigPatch,
+  maskConfig,
+  parseConfigText,
+  type JsonObject,
+  type LogEntry,
+} from "./config-editor"
 import { GitPanel } from "./git-panel"
 import RessourcesPanel from "./ressources-panel"
 import { gitApi } from "./git-client"
@@ -230,6 +239,20 @@ export default function App() {
    * Borné : un journal qui grossit sans fin est une fuite, pas un journal.
    */
   const [logEntries, setLogEntries] = createSignal<Array<{ at: number; type: string; note?: string }>>([])
+
+  /**
+   * Les onglets du panneau principal — Conversation, Config, Logs (maquette §Onglets).
+   * `view` garde sa sémantique Chat/Trajectory ; `panelTab` commute l'écran entier vers les deux
+   * nouveaux onglets. Un seul onglet actif : trois écrans qui se remplacent, pas trois panneaux.
+   */
+  const [panelTab, setPanelTab] = createSignal<"conv" | "config" | "logs">("conv")
+  /** Éditeur de configuration : texte masqué, configuration d'origine, et trois états. */
+  const [configSourceText, setConfigSourceText] = createSignal("")
+  const [configOriginal, setConfigOriginal] = createSignal<JsonObject>({})
+  const [configLoading, setConfigLoading] = createSignal(false)
+  const [configError, setConfigError] = createSignal<string | undefined>()
+  const [configNotice, setConfigNotice] = createSignal<string | undefined>()
+  const [configBusy, setConfigBusy] = createSignal(false)
   const LOG_LIMIT = 200
   /**
    * Le **schéma déclaré** de chaque outil (`GET /experimental/tool`), pour le panneau de détail.
@@ -1240,6 +1263,62 @@ export default function App() {
   const selectSection = (key: SettingsSectionKey) => {
     setSettingsSection(key)
     void loadSettings(key)
+  }
+
+  /**
+   * Charge la configuration réelle pour l'éditeur de l'onglet Config. La charge brute porte des clés
+   * de fournisseur en clair : elle est projetée ici même, avant tout signal, donc avant le DOM.
+   */
+  const loadConfigTab = async () => {
+    setConfigLoading(true)
+    setConfigError(undefined)
+    setConfigNotice(undefined)
+    const result = await client.global.config.get().catch((cause: unknown) => {
+      setConfigError(String(cause))
+      return undefined
+    })
+    setConfigLoading(false)
+    const data = (result as { data?: Record<string, unknown> } | undefined)?.data
+    if (data) {
+      const masked = maskConfig(data) as JsonObject
+      setConfigOriginal(masked)
+      setConfigSourceText(JSON.stringify(masked, null, 2))
+    }
+  }
+
+  /** Commute l'onglet du panneau ; Config charge à la demande, Logs lit le flux déjà souscrit. */
+  const selectPanelTab = (tab: "conv" | "config" | "logs") => {
+    setPanelTab(tab)
+    if (tab === "config") void loadConfigTab()
+  }
+
+  /** Écrit le patch de l'éditeur — partiel, et sans aucun secret. */
+  const saveConfigTab = async () => {
+    const parsed = parseConfigText(configSourceText())
+    if (!parsed.value) {
+      setConfigError(parsed.error)
+      return
+    }
+    const { patch, skipped } = buildConfigPatch(parsed.value, configOriginal())
+    setConfigBusy(true)
+    setConfigError(undefined)
+    setConfigNotice(undefined)
+    const result = await client.global.config
+      .update({ config: patch as Record<string, never> })
+      .catch((cause: unknown) => {
+        setConfigError(String(cause))
+        return undefined
+      })
+    setConfigBusy(false)
+    if (result) {
+      const count = Object.keys(patch).length
+      setConfigNotice(
+        count
+          ? `${count} value(s) saved${skipped.length ? ` · ${skipped.length} secret field(s) kept` : ""}`
+          : "nothing changed",
+      )
+      await loadConfigTab()
+    }
   }
 
   /**
@@ -2459,6 +2538,66 @@ export default function App() {
           </div>
         </Show>
 
+        {/* Onglets du panneau — Conversation / Config / Logs (maquette §Onglets). Lequel que soit
+            l'onglet, la barre reste là : c'est elle qui dit où l'on est et permet de revenir. */}
+        <nav class="cl-tabbar" role="tablist" aria-label="Panel views">
+          <button
+            type="button"
+            role="tab"
+            class="cl-tab"
+            classList={{ active: panelTab() === "conv" }}
+            aria-selected={panelTab() === "conv"}
+            onClick={() => selectPanelTab("conv")}
+          >
+            Conversation
+          </button>
+          <button
+            type="button"
+            role="tab"
+            class="cl-tab"
+            classList={{ active: panelTab() === "config" }}
+            aria-selected={panelTab() === "config"}
+            onClick={() => selectPanelTab("config")}
+          >
+            Config
+          </button>
+          <button
+            type="button"
+            role="tab"
+            class="cl-tab"
+            classList={{ active: panelTab() === "logs" }}
+            aria-selected={panelTab() === "logs"}
+            onClick={() => selectPanelTab("logs")}
+          >
+            Logs
+          </button>
+        </nav>
+
+        <Show when={panelTab() === "config"}>
+          <ConfigTab
+            source={configSourceText()}
+            onSource={setConfigSourceText}
+            original={configOriginal()}
+            loading={configLoading()}
+            error={configError()}
+            notice={configNotice()}
+            busy={configBusy()}
+            onSave={() => void saveConfigTab()}
+            onReload={() => void loadConfigTab()}
+          />
+        </Show>
+
+        <Show when={panelTab() === "logs"}>
+          <LogsTab
+            entries={logEntries() as LogEntry[]}
+            connected={stream().connected}
+            reconnects={stream().reconnects}
+            lastError={stream().lastError}
+            onClear={() => setLogEntries([])}
+          />
+        </Show>
+
+        <Show when={panelTab() === "conv"}>
         <Show when={active()} fallback={renderHome()}>
           {/* La barre des **vues**, au-dessus du chat. Elle commute le contenu du panneau principal
               — la conversation ou le journal — comme les dialogues du TUI. Elle est ici, et non dans
@@ -2670,6 +2809,7 @@ export default function App() {
             <ComposerStats stats={stats()} contextLimit={modelLimits()[composerModel()]} working={working()} />
           </form>
           </Show>
+        </Show>
         </Show>
       </main>
 
