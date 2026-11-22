@@ -104,6 +104,63 @@
 
 * {
   box-sizing: border-box;
+  --gutter: 24px;
+  --measure: 780px;
+  --radius: 10px;
+
+  /* Verre sobre — docs/design/22-verre-sobre-web.md (valeurs de docs/design/19-tokens.md §9) */
+  --shadow-1: 0 1px 2px #0000001a;
+  --shadow-2: 0 8px 24px #00000033;
+  --glass-blur: blur(16px) saturate(1.1);
+  --glass-blur-fort: blur(20px) saturate(1.1);
+  --glass-opaque: 0.80;   /* surface portant du texte */
+  --glass-moyen: 0.65;    /* panneaux sans texte essentiel */
+  --glass-legger: 0.55;   /* décoration, profondeur */
+  --glass-contour-color: #ffffff1f; /* 1 px à 12 % */
+   --glass-reflet: linear-gradient(to bottom, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.06) 100%);
+ }
+
+/* Verre sobre — surfaces translucides (docs/design/22-verre-sobre-web.md) */
+.glass {
+  position: relative;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-contour-color);
+  box-shadow: var(--shadow-2);
+  border-radius: var(--radius);
+}
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-reflet);
+  mask-image: linear-gradient(to bottom, #000000 80%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000000 80%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+/* Variantes selon la surface cible */
+.glass-rail { opacity: var(--glass-moyen); }
+.glass-composer { opacity: var(--glass-moyen); }
+.glass-menu { opacity: var(--glass-opaque); backdrop-filter: var(--glass-blur-fort); -webkit-backdrop-filter: var(--glass-blur-fort); }
+.glass-sheet { opacity: var(--glass-opaque); backdrop-filter: var(--glass-blur-fort); -webkit-backdrop-filter: var(--glass-blur-fort); }
+.glass-depot { opacity: var(--glass-moyen); }
+/* Repli sans backdrop-filter : surface opaque de même teinte */
+@supports not (backdrop-filter: blur(1px)) {
+  .glass {
+    background: var(--bg-2);
+    opacity: 1;
+    border: 1px solid var(--glass-contour-color);
+    box-shadow: var(--shadow-2);
+  }
+  .glass::before {
+    display: none;
+  }
+}
+
+* {
+  box-sizing: border-box;
 }
 
 html,

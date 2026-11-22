@@ -3199,6 +3199,8 @@ export default function App() {
       <SkyCanvas mode={skyMode()} />
       <div class="layout" style={layoutStyle()}>
         <aside class="rail">
+    <div class="layout" style={layoutStyle()}>
+      <aside class="rail glass-rail">
         <div class="grip" onPointerDown={startSidebarDrag} />
 
         <SidebarLogo />
@@ -3454,6 +3456,17 @@ export default function App() {
                                 }
                               >
                                 <span class="row-actions">
+                                <span                                     class="row-menu glass-menu">
+                                  <button
+                                    class="row-menu-item"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setMenuOpen(undefined)
+                                      startRename(session)
+                                    }}
+                                  >
+                                    Rename
+                                  </button>
                                   <Show
                                     when={menuOpen() === session.id}
                                     fallback={
@@ -3807,6 +3820,8 @@ export default function App() {
 
           <form class="composer" onSubmit={send}>
             <div class="composer-inner cv-composer">
+          <form class="composer glass-composer" onSubmit={send}>
+            <div class="composer-inner">
               <Show when={attachments().length > 0}>
                 <ul class="pending">
                   <For each={attachments()}>
