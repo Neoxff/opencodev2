@@ -2,6 +2,7 @@
   "version": 1,
   "machine": {
     "date": "2026-11-21T11:20:44.422Z",
+    "date": "2026-11-21T11:04:09.561Z",
     "systeme": "linux",
     "noyau": "7.3.5-arch1-1",
     "architecture": "x64",
@@ -39,6 +40,13 @@
       },
       "trace": {
         "dureeTachesMs": 0.001,
+        "p95": 1.2,
+        "min": 0.8,
+        "max": 1.2,
+        "moyenne": 0.93
+      },
+      "trace": {
+        "dureeTachesMs": 0,
         "dureeScriptMs": 0
       },
       "outils": {
@@ -57,6 +65,13 @@
         "moyenne": 2.001
       },
       "debitEvenementsParSeconde": 5440696
+        "mediane": 1.899,
+        "p95": 2.614,
+        "min": 1.31,
+        "max": 2.614,
+        "moyenne": 1.945
+      },
+      "debitEvenementsParSeconde": 5265929
     },
     "markdown": {
       "lignes": 5000,
@@ -67,6 +82,11 @@
         "min": 62.224,
         "max": 86.383,
         "moyenne": 73.291
+        "mediane": 60.736,
+        "p95": 98.068,
+        "min": 54.748,
+        "max": 98.068,
+        "moyenne": 70.03
       },
       "outil": "17.0.1"
     },
@@ -91,6 +111,11 @@
         "min": 29.51,
         "max": 36.396,
         "moyenne": 32.058
+        "mediane": 30.445,
+        "p95": 35.724,
+        "min": 28.368,
+        "max": 35.724,
+        "moyenne": 31.304
       },
       "outil": "ripgrep (rg)"
     },
@@ -103,6 +128,40 @@
         "min": 2316.63,
         "max": 3025.127,
         "moyenne": 2682.843
+        "mediane": 2825.825,
+        "p95": 3410.988,
+        "min": 2246.035,
+        "max": 3410.988,
+        "moyenne": 2882.864
+      }
+    },
+    "listes": {
+      "lignes": 10000,
+      "hauteurLigne": 24,
+      "renduCompletMs": {
+        "n": 10,
+        "mediane": 7.2,
+        "p95": 9.4,
+        "min": 5.9,
+        "max": 9.4,
+        "moyenne": 7.47
+      },
+      "renduFenetreMs": {
+        "n": 10,
+        "mediane": 0.3,
+        "p95": 0.6,
+        "min": 0.1,
+        "max": 0.6,
+        "moyenne": 0.3
+      },
+      "noeudsComplet": 10000,
+      "noeudsFenetre": 31,
+      "gainNoeuds": 99.7,
+      "longuesTaches": 0,
+      "pireTacheMs": 0,
+      "outils": {
+        "playwright": "1.63.0",
+        "chromium": "cache ms-playwright"
       }
     }
   }

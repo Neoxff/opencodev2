@@ -1,4 +1,4 @@
-/** Orchestrateur du banc de référence : 5 mesures × 10 passages → docs/perf/base.json. */
+/** Orchestrateur du banc de référence : 6 mesures × 10 passages → docs/perf/base.json. */
 
 import { mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -9,6 +9,7 @@ import { mesurerEvenements } from "./evenements"
 import { mesurerMarkdown } from "./markdown"
 import { mesurerMarkdownProduction } from "./markdown-production"
 import { mesurerRecherche } from "./recherche"
+import { mesurerListes } from "./listes"
 
 async function temps<T>(nom: string, f: () => Promise<T>): Promise<T> {
   const t0 = performance.now()
@@ -19,12 +20,14 @@ async function temps<T>(nom: string, f: () => Promise<T>): Promise<T> {
 }
 
 const [etoiles, evenements, markdown, markdownProduction, recherche, demarrage] = await Promise.all([
+const [etoiles, evenements, markdown, recherche, demarrage, listes] = await Promise.all([
   temps("étoiles (Chromium)", mesurerEtoiles),
   temps("événements", mesurerEvenements),
   temps("markdown (marked)", mesurerMarkdown),
   temps("markdown (parser production)", mesurerMarkdownProduction),
   temps("recherche", mesurerRecherche),
   temps("démarrage web", mesurerDemarrage),
+  temps("listes longues (Chromium)", mesurerListes),
 ])
 
 const rapport = {
@@ -37,6 +40,7 @@ const rapport = {
     note: "Aucun changement de comportement de l'application ; banc reproductible via bun scripts/bench/run.ts.",
   },
   mesures: { etoiles, evenements, markdown, markdownProduction, recherche, demarrage },
+  mesures: { etoiles, evenements, markdown, recherche, demarrage, listes },
 }
 
 const cible = path.join(RACINE, "docs", "perf", "base.json")
