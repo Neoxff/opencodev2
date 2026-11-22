@@ -1,0 +1,256 @@
+/* =============================================================================
+   Build 3 — conversation de la maquette validée.
+   Chargée après styles.css ; aucun comportement n'est modifié.
+   ============================================================================= */
+
+:root {
+  --cv-panel: #0c0c0e;
+  --cv-raise: #131316;
+  --cv-line: #222226;
+  --cv-line-2: #2c2c31;
+  --cv-tx: #ebebed;
+  --cv-tx-2: #a3a3ab;
+  --cv-tx-3: #6c6c75;
+  --cv-green: #7ee787;
+  --cv-amber: #e8b155;
+  --cv-red: #ff7b72;
+  --cv-monofont: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* ---- En-tête ---- */
+.thread {
+  position: relative;
+}
+.conv-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 52px;
+  padding: 0 12px 0 18px;
+  flex: none;
+  border-bottom: 1px solid var(--cv-line);
+}
+.conv-back {
+  color: var(--cv-tx-2);
+  display: grid;
+  place-items: center;
+}
+.conv-back:hover {
+  color: var(--cv-tx);
+}
+.conv-title {
+  margin: 0;
+  font: 500 12.5px var(--font, sans-serif);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.conv-goal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  color: var(--cv-tx-2);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.conv-goal:hover {
+  color: var(--cv-tx);
+}
+.conv-tabs {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.conv-tab {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  color: var(--cv-tx-2);
+  font-size: 12.5px;
+}
+.conv-tab:hover {
+  color: var(--cv-tx);
+}
+.conv-tab.on {
+  background: var(--cv-raise);
+  border-color: var(--cv-line-2);
+  color: var(--cv-tx);
+}
+.conv-working {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  color: var(--cv-tx-2);
+  font-size: 12.5px;
+}
+.conv-working svg {
+  animation: cv-spin 1.4s linear infinite;
+}
+@keyframes cv-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Lignes du flux ---- */
+.cv-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px 62px minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 29.5px;
+  font-size: 12px;
+  color: var(--cv-tx-2);
+  text-align: left;
+  width: 100%;
+}
+.cv-row button {
+  text-align: left;
+}
+.cv-ico {
+  display: grid;
+  place-items: center;
+  color: var(--cv-tx-2);
+}
+.cv-verb {
+  color: var(--cv-tx-3);
+}
+.cv-verb small {
+  display: block;
+  font-weight: 600;
+  color: var(--cv-amber);
+  margin-top: 1px;
+}
+.cv-name {
+  color: var(--cv-tx);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--cv-monofont);
+  font-size: 11.8px;
+}
+.cv-name.sans {
+  font-family: var(--font, sans-serif);
+  font-size: 12px;
+}
+.cv-right {
+  display: flex;
+  gap: 14px;
+  justify-content: flex-end;
+  color: var(--cv-tx-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cv-add { color: var(--cv-green); }
+.cv-del { color: var(--cv-red); }
+.cv-row.run { cursor: pointer; }
+.cv-row.thought { color: var(--cv-tx-2); }
+.cv-thought-text {
+  display: none;
+  margin: 0 0 8px 82px;
+  color: var(--cv-tx-2);
+  font-size: 12px;
+  line-height: 1.55;
+  font-style: italic;
+}
+.cv-row.thought[aria-expanded="true"] + .cv-thought-text { display: block; }
+.cv-thought-text.open { display: block; }
+.cv-out {
+  display: none;
+  margin: 2px 0 8px 82px;
+  padding: 9px 12px;
+  background: #000;
+  border: 1px solid var(--cv-line);
+  border-radius: 9px;
+  font: 11.5px/1.6 var(--cv-monofont);
+  color: var(--cv-tx-2);
+  white-space: pre-wrap;
+}
+.cv-out.open { display: block; }
+.cv-out i {
+  display: block;
+  margin-top: 6px;
+  color: var(--cv-tx-3);
+  font: 11px var(--font, sans-serif);
+  font-style: normal;
+}
+.cv-live {
+  color: var(--cv-tx);
+}
+
+/* ---- Paragraphes, code, message utilisateur ---- */
+.cv-prose {
+  color: #e9e9eb;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.cv-prose code {
+  font: 11.8px var(--cv-monofont);
+  color: var(--cv-green);
+}
+.cv-tag {
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--cv-tx-3);
+  font-size: 11px;
+}
+.cv-user {
+  position: relative;
+  margin: 12px 0 8px auto;
+  max-width: 78%;
+  padding: 9px 13px;
+  background: var(--cv-raise);
+  border: 1px solid var(--cv-line-2);
+  border-radius: 12px;
+  color: var(--cv-tx);
+  font-size: 13px;
+}
+.cv-user code {
+  font: 11.8px var(--cv-monofont);
+  color: var(--cv-green);
+}
+.cv-queued {
+  display: inline-block;
+  margin-left: 8px;
+  font: 10.5px var(--cv-monofont);
+  color: var(--cv-amber);
+}
+
+/* ---- Curseur de défilement ---- */
+.conv-up {
+  position: absolute;
+  right: 18px;
+  top: 60px;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
+  color: var(--cv-tx-3);
+  opacity: 0;
+  pointer-events: none;
+}
+.conv-up.on {
+  opacity: 1;
+  pointer-events: auto;
+}
+.conv-thumb {
+  position: absolute;
+  right: 20px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  pointer-events: none;
+}
+.conv-thumb i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--cv-tx-3);
+}

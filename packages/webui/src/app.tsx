@@ -31,14 +31,26 @@ import {
   Media,
   PatchLine,
   PermissionSheet,
-  Prose,
   QuestionSheet,
   Reasoning,
+  ShowMore,
+  SessionRow,
   Spinner,
-  ToolLine,
   Turn,
   UserPrompt,
+  WorkspaceGroup,
 } from "./components"
+import {
+  ConversationHeader,
+  ConversationParagraph,
+  ConversationUserMessage,
+  DelegateRow,
+  EditRow,
+  RunRow,
+  ScrollChrome,
+  ThoughtRow,
+  toolDuration,
+} from "./conversation"
 import {
   AgentsSection,
   GeneralSection,
@@ -140,6 +152,11 @@ import {
 import {
   answerDocuments,
   dropPermission,
+  fileDiff,
+  formatDuration,
+  toolDetail,
+  toolStatusLabel,
+  toolTitle,
   dropQuestion,
   emptyAnswers,
   groupTurns,
@@ -548,17 +565,6 @@ export default function App() {
     }
     window.addEventListener("pointermove", onMove)
     window.addEventListener("pointerup", onUp)
-  }
-
-  /** Repli/dépli manuel : sous le seuil, un dépli explicite pose `narrowExpanded`. */
-  const toggleSidebar = () => {
-    if (sidebarPref() === 0) {
-      setSidebarPref(SIDEBAR_DEFAULT)
-      setNarrowExpanded(true)
-      return
-    }
-    setSidebarPref(0)
-    setNarrowExpanded(false)
   }
 
   /**
@@ -1723,13 +1729,25 @@ export default function App() {
    */
   let scroller: HTMLDivElement | undefined
   let following = true
+  const [scrollChrome, setScrollChrome] = createSignal({ up: false, thumb: false, progress: 0 })
+  const measureScroll = () => {
+    if (!scroller) return
+    const max = scroller.scrollHeight - scroller.clientHeight
+    setScrollChrome({
+      up: scroller.scrollTop > 8,
+      thumb: max > 4,
+      progress: max > 0 ? Math.min(1, scroller.scrollTop / max) : 0,
+    })
+  }
   const onScroll = () => {
     if (!scroller) return
     following = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40
+    measureScroll()
   }
   createEffect(() => {
     messages()
     if (scroller && following) scroller.scrollTop = scroller.scrollHeight
+    queueMicrotask(measureScroll)
   })
 
   onMount(async () => {
@@ -1879,12 +1897,11 @@ export default function App() {
   const renderItem = (part: Part) => {
     const id = part.id ?? ""
     if (part.type === "text") {
-      return <Prose text={part.text ?? ""} synthetic={part.synthetic} ignored={part.ignored} />
+      return <ConversationParagraph text={part.text ?? ""} synthetic={part.synthetic} ignored={part.ignored} />
     }
     if (part.type === "reasoning") {
       // La durée, pas le volume : `reasoning.time` est renseigné 1 511 fois sur 1 511. Tant que le
-      // serveur ne l'a pas bornée, la durée est **vivante** — elle avance au battement de `tick` —
-      // et la ligne porte le spinner (« thinking »). Bornée, elle affiche sa durée (« Thinking »).
+      // serveur ne l'a pas bornée, la durée est **vivante** — elle avance au battement de `tick`.
       const start = part.time?.start
       const end = part.time?.end
       const live = reasoningLive(part)
@@ -1897,10 +1914,10 @@ export default function App() {
               ? tick() - start
               : undefined
       return (
-        <Reasoning
+        <ThoughtRow
+          duration={formatDuration(duration)}
+          chars={(part.text ?? "").length}
           text={part.text ?? ""}
-          live={live}
-          durationMs={duration}
           open={Boolean(expanded()[id])}
           onToggle={() => toggle(id)}
         />
@@ -1912,12 +1929,48 @@ export default function App() {
       const media = partMedia(part)
       return (
         <>
-          <ToolLine
-            tool={part.tool ?? ""}
-            state={part.state as ToolState}
-            open={Boolean(expanded()[id])}
-            onToggle={() => toggle(id)}
-          />
+          <Show when={part.state} fallback={<RunRow name={part.tool ?? "run"} status="pending" output="" open={false} onToggle={() => toggle(id)} />}>
+            {(raw) => {
+              const state = raw() as ToolState
+              const duration = toolDuration(state, tick())
+              const title = toolTitle(state) ?? part.tool ?? ""
+              const diff = fileDiff(state)
+              const delegate = part.tool === "task" || part.tool === "subagent"
+              const status = state.status === "completed" ? "done" : toolStatusLabel(state)
+              const detail = toolDetail(state)
+              const output = detail.output ?? detail.error ?? detail.input ?? ""
+              return (
+                <Show when={diff} fallback={
+                  <Show when={delegate} fallback={
+                    <RunRow
+                      name={title}
+                      status={status}
+                      output={output}
+                      duration={duration}
+                      open={Boolean(expanded()[id])}
+                      onToggle={() => toggle(id)}
+                    />
+                  }>
+                    <DelegateRow
+                      name={title}
+                      running={state.status === "running" || state.status === "pending"}
+                      duration={duration}
+                    />
+                  </Show>
+                }>
+                  {(value) => (
+                    <EditRow
+                      file={title}
+                      additions={value().additions}
+                      deletions={value().deletions}
+                      done={state.status === "completed"}
+                      duration={duration}
+                    />
+                  )}
+                </Show>
+              )
+            }}
+          </Show>
           <For each={media}>{(item) => <Media kind={item.kind} url={item.url} name={item.name} />}</For>
         </>
       )
@@ -1951,13 +2004,13 @@ export default function App() {
   }
 
   /** Le prompt de l'utilisateur : le seul texte qu'il a écrit lui-même, donc la seule surface mise en forme. */
-  const renderPrompt = (part: Part) => {
+  const renderPrompt = (part: Part, queued = false) => {
     if (part.type !== "text") return renderItem(part)
     const text = part.text ?? ""
     // Le bloc d'injections arrive en texte brut, dans le même message que le prompt. On le lit comme
     // une structure et il ne s'affiche **pas** comme si l'utilisateur l'avait écrit.
     const injections = parseInjections(text)
-    if (!injections) return <UserPrompt text={text} />
+    if (!injections) return <ConversationUserMessage text={text} queued={queued} />
     // Les tirs de garde-fous ont leur propre forme : une ligne par tir, avec l'origine en clair.
     // Les passer à `ContextInjections` afficherait « 0 section » — le bloc n'a pas de volumes.
     if (injections.kind === "firings") {
@@ -2089,7 +2142,12 @@ export default function App() {
     <>
       <Show when={turn.prompt.length > 0}>
         <Turn role="user" index={index}>
-          <For each={turn.prompt}>{(part) => renderPrompt(part)}</For>
+          <For each={turn.prompt}>{(part) => renderPrompt(
+            part,
+            working() &&
+              turn.id === [...turns()].reverse().find((item) => item.prompt.length > 0)?.id &&
+              turn.id !== servedTurn(turns())?.id,
+          )}</For>
           {/*
             Ce qui **travaille** le dit : une ligne d'attente, avec le spinner, à la place de la ligne
             qui n'est pas encore écrite. Deux phases, dans l'ordre du serveur — « loaded … » tant que
@@ -2386,44 +2444,39 @@ export default function App() {
       {/* `busy` nomme l'état pour le CSS : c'est lui qui autorise un mouvement dans le fil (le
           curseur de la prose en cours), et rien au repos. */}
       <main class="thread" classList={{ busy: working() }}>
-        <Show when={columns().sidebar === 0 || notice()}>
-          <div class="thread-head">
-            <Show when={columns().sidebar === 0}>
-              <button class="ghost" title="Show sessions" onClick={toggleSidebar}>
-                ☰
-              </button>
-            </Show>
-            <Show when={notice()}>
-              {(state) => (
-                <span class="notice" classList={{ bad: state().bad }}>
-                  {state().text}
-                </span>
-              )}
-            </Show>
-          </div>
+        <ConversationHeader
+          title={sessions().find((item) => item.id === active())?.title ?? "New session"}
+          view={view()}
+          working={working()}
+          onBack={() => {
+            setActive(undefined)
+            setThread([])
+            turnCache.clear()
+          }}
+          onGoal={() => setDrawerOpen(!drawerOpen())}
+          onView={(next) => {
+            setView(next)
+            if (next === "logs") void loadToolSchemas()
+          }}
+          onConfig={openConfig}
+        />
+        <ScrollChrome
+          up={scrollChrome().up}
+          thumb={scrollChrome().thumb}
+          progress={scrollChrome().progress}
+          onUp={() => scroller?.scrollTo({ top: 0, behavior: "smooth" })}
+        />
+        <Show when={notice()}>
+          {(state) => (
+            <div class="thread-head">
+              <span class="notice" classList={{ bad: state().bad }}>
+                {state().text}
+              </span>
+            </div>
+          )}
         </Show>
 
         <Show when={active()} fallback={renderHome()}>
-          {/* La barre des **vues**, au-dessus du chat. Elle commute le contenu du panneau principal
-              — la conversation ou le journal — comme les dialogues du TUI. Elle est ici, et non dans
-              le rail, parce que c'est le contenu du chat qu'elle remplace : on la cherche là où l'on
-              regarde. */}
-          <nav class="view-nav">
-            <button class="view-item" classList={{ active: view() === "chat" }} onClick={() => setView("chat")}>
-              Chat
-            </button>
-            <button
-              class="view-item"
-              classList={{ active: view() === "logs" }}
-              onClick={() => {
-                setView("logs")
-                // Le schéma des outils se lit **ici** : 61 ko ne se paient pas au montage.
-                void loadToolSchemas()
-              }}
-            >
-              Trajectory
-            </button>
-          </nav>
           <Show when={view() === "logs"}>
             {/* La vue **Trajectory**, reprise de la capture de DSH : barre d'outils, diagramme en
                 pistes, puis la liste des événements — badge, contenu, résultat. */}

@@ -402,11 +402,30 @@ export function NewSessionIcon(props: { size?: number }) {
   )
 }
 
+/* ---- Icônes de l'en-tête de conversation ---- */
+
+export function BackIcon(props: { size?: number }) {
+  return (
+    <Glyph size={props.size ?? 14}>
+      <path d="M20 12H4M12 4l-8 8 8 8" />
+    </Glyph>
+  )
+}
+
 /** Réduire : le double chevron de la maquette. */
 export function CollapseIcon(props: { size?: number }) {
   return (
     <Glyph size={props.size ?? 14}>
       <path d="m11 17-5-5 5-5M18 17l-5-5 5-5" />
+    </Glyph>
+  )
+}
+
+export function RefreshIcon(props: { size?: number }) {
+  return (
+    <Glyph size={props.size ?? 12}>
+      <path d="M20 11a8 8 0 1 0-2.3 5.7L21 13" />
+      <path d="M21 8v5h-5" />
     </Glyph>
   )
 }
@@ -427,6 +446,16 @@ export function ServerIcon(props: { size?: number }) {
     <Glyph size={props.size ?? 14}>
       <path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1" />
       <path d="M15 4v4M9 10v4M17 16v4" />
+    </Glyph>
+  )
+}
+
+export function TargetIcon(props: { size?: number }) {
+  return (
+    <Glyph size={props.size ?? 12}>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1.5" />
     </Glyph>
   )
 }
