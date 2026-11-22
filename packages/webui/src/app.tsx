@@ -130,6 +130,30 @@ import {
   threadEventOutcome,
 } from "./stream-sync"
 import { sessionTimestamp } from "./time"
+import { CommandHost } from "./ui-command-dialog"
+import {
+  HELP_KEYS,
+  THEMES,
+  isCommandId,
+  type CommandData,
+  type DiffFile,
+  type Row,
+  type ViewId,
+} from "./ui-commands"
+import {
+  choiceRows,
+  diffFiles,
+  mcpRows,
+  providerRows as authProviderRows,
+  sessionRows,
+  skillRows,
+  stamp,
+  subagentRows,
+  timelineRows,
+  variantRows,
+  variantsForModel,
+  type Skill,
+} from "./ui-commands-data"
 import {
   answerDocuments,
   dropPermission,
@@ -845,6 +869,195 @@ export default function App() {
       setHistoryIndex(step.index)
       setDraft(step.text)
       return
+    }
+  }
+
+  /* -----------------------------------------------------------------------------
+     Commandes d'interface (/agents, /models, /mcps…)
+
+     Une commande d'interface agit sur l'écran, jamais sur l'agent : la frappe est
+     interceptée avant `send()`, donc le serveur ne la voit pas. Les valeurs viennent
+     uniquement des signaux déjà alimentés par les routes réelles ; rien n'est codé en dur.
+     -------------------------------------------------------------------------- */
+  const UI_THEME_KEY = "oc.webui.theme"
+  const UI_DECISION_KEY = "oc.webui.decisionModel"
+  const UI_VISION_KEY = "oc.webui.visionModel"
+
+  const [command, setCommand] = createSignal<ViewId | undefined>()
+  const [decisionModel, setDecisionModel] = createSignal(localStorage.getItem(UI_DECISION_KEY) ?? "")
+  const [visionModel, setVisionModel] = createSignal(localStorage.getItem(UI_VISION_KEY) ?? "")
+  const [theme, setTheme] = createSignal(localStorage.getItem(UI_THEME_KEY) ?? "")
+  const [thinking, setThinking] = createSignal(false)
+  const [timestamps, setTimestamps] = createSignal(false)
+  const [variant, setVariant] = createSignal("")
+  const [skills, setSkills] = createSignal<Skill[]>([])
+  const [providers, setProviders] = createSignal<Record<string, unknown>>({})
+  const [diff, setDiff] = createSignal<DiffFile[]>([])
+  /** La charge brute des fournisseurs n'est jamais gardée : on ne lui demande que les variantes. */
+  const [variants, setVariants] = createSignal<string[]>([])
+
+  /**
+   * Les prompts réels de la session, avec l'index du tour dans le fil — c'est lui qui identifie
+   * l'ancre `data-turn` sur laquelle `/timeline` saute. L'index n'est pas recompté à partir de
+   * l'historique : il vient du fil rendu, donc l'ancre existe toujours.
+   */
+  const prompts = createMemo(() =>
+    turns()
+      .map((turn, index) => ({
+        index,
+        text: turn.prompt
+          .map((part) => (part.type === "text" ? part.text ?? "" : ""))
+          .join("")
+          .trim(),
+      }))
+      .filter((entry) => entry.text.length > 0),
+  )
+
+  /** Une commande qui a besoin du réseau charge ses choix à l'ouverture, pas au montage. */
+  const openCommand = (id: ViewId) => {
+    setCommand(id)
+    if (id === "skills" && skills().length === 0) {
+      void client.app
+        .skills(scope())
+        .then((result) => setSkills(((result as { data?: Skill[] } | undefined)?.data ?? []) as Skill[]))
+        .catch(() => setSkills([]))
+    }
+    if (id === "connect" && Object.keys(providers()).length === 0) {
+      void client.provider
+        .auth(scope())
+        .then((result) => setProviders(((result as { data?: Record<string, unknown> } | undefined)?.data ?? {}) as Record<string, unknown>))
+        .catch(() => setProviders({}))
+    }
+    if (id === "variants") {
+      void client.config
+        .providers()
+        .then((result) => setVariants(variantsForModel((result as { data?: unknown } | undefined)?.data, composerModel())))
+        .catch(() => setVariants([]))
+    }
+    if (id === "diff" && active()) {
+      const sessionID = active() as string
+      void client.session
+        .diff({ sessionID, ...scope() })
+        .then((result) => setDiff(diffFiles(((result as { data?: Array<{ file?: string; patch?: string; additions?: number; deletions?: number }> } | undefined)?.data ?? []))))
+        .catch(() => setDiff([]))
+    }
+  }
+
+  /** La palette `ctrl+p` ouvre la liste ; `/nom` ouvre une commande précise. */
+  const runSlash = (text: string): boolean => {
+    const first = text.trim().split(/\s+/)[0] ?? ""
+    const name = first.startsWith("/") ? first.slice(1) : ""
+    if (!isCommandId(name)) return false
+    setDraft("")
+    openCommand(name)
+    return true
+  }
+
+  /** Toutes les données réelles dont le dialogue a besoin, recalculées pendant le rendu. */
+  const commandData = createMemo<CommandData>(() => ({
+    agents: choiceRows(agentOptions(), composerAgent()),
+    models: choiceRows(modelOptions(), composerModel()),
+    variants: variantRows(variants(), variant()),
+    themes: THEMES,
+    decisionModel: decisionModel(),
+    visionModel: visionModel(),
+    sessions: sessionRows(sessions(), active()),
+    skills: skillRows(skills()),
+    subagents: subagentRows(agents()),
+    providers: authProviderRows(providers()),
+    mcps: mcpRows(mcp()),
+    status: [
+      ["Version", health()?.version ?? "unknown"],
+      ["Server", serverUrl || "same origin"],
+      ["Directory", directory() || serverPath() || "(server default)"],
+      ["Agent", composerAgent() || String(config().default_agent ?? "") || "(server default)"],
+      ["Model", composerModel() || String(config().model ?? "") || "(server default)"],
+      ["Context", `${stats().tokens} tokens`],
+      ["MCP", `${mcpConnectedCount(mcp())}/${Object.keys(mcp()).length} connected`],
+      ["LSP", "disabled"],
+    ],
+    help: HELP_KEYS,
+    timeline: timelineRows(
+      prompts().map((entry) => ({ value: String(entry.index), label: entry.text.replace(/\s+/g, " ").slice(0, 64), detail: `#${entry.index + 1}` })),
+    ),
+    diff: diff(),
+    thinking: thinking(),
+    timestamps: timestamps(),
+    theme: theme(),
+    configText: configPath() ? `${configPath()}\\opencode.jsonc (read-only preview)` : "opencode.jsonc",
+    logs: logEntries().map((entry) => `${new Date(entry.at).toLocaleTimeString()} ${entry.type}${entry.note ? ` → ${entry.note}` : ""}`),
+  }))
+
+  /** Choisir une ligne : la valeur est celle du serveur, jamais le libellé affiché. */
+  const pickCommand = (id: ViewId, value: string) => {
+    if (id === "palette") {
+      if (isCommandId(value)) openCommand(value)
+      return
+    }
+    switch (id) {
+      case "agents":
+        setComposerAgent(value)
+        break
+      case "models":
+        setComposerModel(value)
+        break
+      case "variants":
+        setVariant(value)
+        break
+      case "decision-model":
+        setDecisionModel(value)
+        localStorage.setItem(UI_DECISION_KEY, value)
+        break
+      case "vision-model":
+        setVisionModel(value)
+        localStorage.setItem(UI_VISION_KEY, value)
+        break
+      case "themes":
+        setTheme(value)
+        document.documentElement.dataset.th = value
+        localStorage.setItem(UI_THEME_KEY, value)
+        break
+      case "timeline": {
+        const index = Number(value)
+        const target = document.querySelector(`[data-turn="${index}"]`)
+        target?.scrollIntoView({ block: "center", behavior: "smooth" })
+        break
+      }
+      case "sessions":
+        void selectSession(value)
+        break
+      case "connect":
+        selectSection("providers")
+        setConfigOpen(true)
+        break
+      case "config":
+        setConfigOpen(true)
+        break
+      case "logs":
+        setView("logs")
+        break
+    }
+    setCommand(undefined)
+  }
+
+  /**
+   * Un interrupteur MCP est **réellement appliqué** : la route du serveur est appelée, puis l'état
+   * est relu — jamais deviné. Le panneau MCP et la barre de situations se recalent sur cette lecture.
+   */
+  const toggleCommand = (id: ViewId, row: Row, next: boolean) => {
+    if (id === "thinking") setThinking(next)
+    else if (id === "timestamps") setTimestamps(next)
+    else if (id === "mcps") {
+      const name = row.value
+      const action = next ? client.mcp.connect({ name, ...scope() }) : client.mcp.disconnect({ name, ...scope() })
+      void action
+        .then(() => client.mcp.status(scope()))
+        .then((result) => {
+          const data = (result as { data?: Record<string, McpState> } | undefined)?.data
+          if (data) setMcp(data)
+          if (configOpen()) void loadSettings("mcp")
+        })
+        .catch((cause: unknown) => setError(String(cause)))
     }
   }
 
@@ -1636,6 +1849,8 @@ export default function App() {
     const sessionID = active()
     const text = draft().trim()
     const files = attachments()
+    // Une commande d'interface est interceptée **avant** l'envoi : le serveur ne la voit jamais.
+    if (text.startsWith("/") && runSlash(text)) return
     if (!sessionID || (!text && files.length === 0)) return
     setDraft("")
     setAttachments([])
@@ -1644,14 +1859,15 @@ export default function App() {
     // Le modèle et l'agent partent avec le message : c'est ce qui rend le changement effectif ici et
     // maintenant, sans toucher à la configuration. Absents, le serveur applique son défaut.
     const model = parseModelChoice(composerModel())
-    const result = await client.session
-      .promptAsync({
-        sessionID,
-        parts,
-        ...(model ? { model } : {}),
-        ...(composerAgent() ? { agent: composerAgent() } : {}),
-        ...scope(),
-      })
+      const result = await client.session
+        .promptAsync({
+          sessionID,
+          parts,
+          ...(model ? { model } : {}),
+          ...(composerAgent() ? { agent: composerAgent() } : {}),
+          ...(variant() ? { variant: variant() } : {}),
+          ...scope(),
+        })
       .catch((cause: unknown) => {
         setError(String(cause))
         return undefined
@@ -1745,10 +1961,21 @@ export default function App() {
     // La charpente suit la largeur de fenêtre : le solveur est pur, donc rien à mémoriser ici.
     const onResize = () => setViewport(window.innerWidth)
     window.addEventListener("resize", onResize)
-    // Échap ferme la feuille de configuration — un panneau modal qui ne se ferme qu'à la souris
-    // piège celui qui l'a ouvert au clavier.
+    // Échap ferme la feuille de configuration et la palette — un panneau modal qui ne se ferme
+    // qu'à la souris piège celui qui l'a ouvert au clavier.
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setConfigOpen(false)
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
+        event.preventDefault()
+        openCommand("palette")
+        return
+      }
+      if (event.key === "Escape") {
+        if (command()) {
+          setCommand(undefined)
+          return
+        }
+        setConfigOpen(false)
+      }
     }
     window.addEventListener("keydown", onKey)
     // Debounced search: the list endpoint takes `search`, so the server does the filtering.
@@ -1890,7 +2117,7 @@ export default function App() {
           text={part.text ?? ""}
           live={live}
           durationMs={duration}
-          open={Boolean(expanded()[id])}
+          open={Boolean(expanded()[id]) || thinking()}
           onToggle={() => toggle(id)}
         />
       )
@@ -2077,6 +2304,7 @@ export default function App() {
   const renderTurn = (turn: TurnView, index: number = -1) => (
     <>
       <Show when={turn.prompt.length > 0}>
+        <div data-turn={index} data-ts={timestamps() ? stamp(sessionTimestamp(turn.prompt[0])) || undefined : undefined} classList={{ "ui-stamps": timestamps() }}>
         <Turn role="user" index={index}>
           <For each={turn.prompt}>{(part) => renderPrompt(part)}</For>
           {/*
@@ -2102,6 +2330,7 @@ export default function App() {
             </div>
           </Show>
         </Turn>
+        </div>
       </Show>
       <Show when={turn.steps.length > 0 || turnError(turn)}>
         <Turn role="assistant" index={index}>
@@ -2830,6 +3059,15 @@ export default function App() {
           </Show>
         </SettingsSheet>
       </Show>
+
+      {/* Les dialogues de commandes — un seul hôte pour les 19 commandes, rendu au-dessus de tout. */}
+      <CommandHost
+        command={command()}
+        data={commandData()}
+        onClose={() => setCommand(undefined)}
+        onPick={pickCommand}
+        onToggle={toggleCommand}
+      />
     </div>
   )
 }
