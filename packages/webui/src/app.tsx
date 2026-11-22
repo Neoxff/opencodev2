@@ -9,6 +9,7 @@ import {
   type Attachment,
 } from "./attachments"
 import { authHeaders } from "./auth"
+import { writeClipboard } from "./clipboard"
 import { client, credentials, fetchHealth, rememberCredentials, serverUrl, type Health } from "./client"
 import {
   DETAILS_DEFAULT,
@@ -103,6 +104,13 @@ import {
   slashQuery,
   type CommandChoice,
 } from "./composer-keys"
+import {
+  runCommandLine,
+  type CommandActivity,
+  type SessionCommandHost,
+  type SessionCommandTransport,
+} from "./session-commands"
+import { CommandActivityLines, SessionCommandDialogs, type CommandDialogState } from "./session-command-ui"
 import { contractFrom, contractPayload, todosFrom, type ContractDraft, type ContractView, type TodoView } from "./plan"
 import {
   agentCounts,
@@ -354,6 +362,15 @@ export default function App() {
   const [renameDraft, setRenameDraft] = createSignal("")
   // Confirmation en ligne : un `window.confirm` natif ne se style pas et bloque tout pilotage.
   const [confirming, setConfirming] = createSignal<string | undefined>()
+  /** Les lignes skill/MCP du fil : le nom réellement invoqué, jamais un exemple. */
+  const [commandActivities, setCommandActivities] = createSignal<CommandActivity[]>([])
+  /** Le dialogue ouvert par une commande de session (renommage, sortie, suppression, éditeur). */
+  const [commandDialog, setCommandDialog] = createSignal<CommandDialogState | undefined>()
+  /** Un accusé de réception court, distinct de l'erreur : une commande réussie le dit. */
+  const [commandNotice, setCommandNotice] = createSignal<string | undefined>()
+  let noticeTimer: ReturnType<typeof setTimeout> | undefined
+  /** La promesse ouverte par `/exit` : résolue par le bouton du dialogue. */
+  let exitResolver: ((accepted: boolean) => void) | undefined
   /**
    * Le menu « … » d'une ligne de session : quelle ligne l'a ouvert. **Une seule à la fois** — c'est
    * ce qui distingue un menu d'une rangée de boutons : le menu se ferme en s'ouvrant ailleurs.
@@ -784,6 +801,34 @@ export default function App() {
    */
   const onComposerKey = (event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) => {
     const element = event.currentTarget
+    const mod = event.ctrlKey || event.metaKey
+    const key = event.key.toLowerCase()
+    // Les raccourcis de session ne s'appliquent pas tant qu'un menu de suggestion est ouvert.
+    if (!menu()) {
+      if (mod && key === "d") {
+        // Suppression : confirmation obligatoire, jamais d'appel direct au serveur.
+        event.preventDefault()
+        const sessionID = active()
+        if (!sessionID) return
+        const session = sessions().find((item) => item.id === sessionID)
+        setConfirming(undefined)
+        setCommandDialog({ kind: "delete", sessionID, title: session?.title ?? "" })
+        return
+      }
+      if (event.altKey && key === "n") {
+        event.preventDefault()
+        void dispatchCommand("/new")
+        return
+      }
+      if (mod && key === "r") {
+        event.preventDefault()
+        const sessionID = active()
+        if (!sessionID) return
+        const session = sessions().find((item) => item.id === sessionID)
+        setCommandDialog({ kind: "rename", sessionID, value: session?.title ?? "" })
+        return
+      }
+    }
     const rows = suggestions()
     if (menu() && rows.length > 0) {
       if (event.key === "ArrowDown") {
@@ -1572,6 +1617,124 @@ export default function App() {
     await loadSessions()
   }
 
+  /* ---------------------------------------------------------------------------------------------
+     Commandes de session — le pont entre les décisions pures et le client SDK réel.
+     Aucun appel shell : `/editor` ouvre une vue, `/exit` ferme la vue de session.
+     ------------------------------------------------------------------------------------------ */
+
+  /** Le transport est le client SDK branché sur `scope()` : aucune donnée de démonstration. */
+  const commandTransport: SessionCommandTransport = {
+    create: async () => (await client.session.create(scope()).catch(() => undefined))?.data,
+    update: async (sessionID, title) => client.session.update({ sessionID, title, ...scope() }),
+    remove: async (sessionID) => client.session.delete({ sessionID, ...scope() }),
+    fork: async (sessionID) => (await client.session.fork({ sessionID, ...scope() }).catch(() => undefined))?.data,
+    revert: async (sessionID) => client.session.revert({ sessionID, ...scope() }),
+    summarize: async (sessionID) => client.session.summarize({ sessionID, ...scope() }),
+    share: async (sessionID) => {
+      const data = (await client.session.share({ sessionID, ...scope() }).catch(() => undefined))?.data
+      return data?.share?.url ? { url: data.share.url } : undefined
+    },
+    unshare: async (sessionID) => client.session.unshare({ sessionID, ...scope() }),
+    init: async (sessionID) => client.session.init({ sessionID, ...scope() }),
+    command: async (sessionID, command, args) =>
+      client.session.command({ sessionID, command, ...(args ? { arguments: args } : {}), ...scope() }),
+    messages: async (sessionID) =>
+      (await client.session.messages({ sessionID, ...scope() }).catch(() => undefined))?.data as
+        | Awaited<ReturnType<typeof client.session.messages>>["data"]
+        | undefined,
+  }
+
+  const showNotice = (message: string) => {
+    clearTimeout(noticeTimer)
+    setCommandNotice(message)
+    noticeTimer = setTimeout(() => setCommandNotice(undefined), 2600)
+  }
+
+  const closeCommandDialog = () => {
+    if (exitResolver) {
+      exitResolver(false)
+      exitResolver = undefined
+    }
+    setCommandDialog(undefined)
+  }
+
+  const commandHost: SessionCommandHost = {
+    clipboard: writeClipboard,
+    download: (filename, content) => {
+      const url = URL.createObjectURL(new Blob([content], { type: "text/markdown" }))
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = filename
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+    },
+    notice: showNotice,
+    error: (message) => setError(message),
+    selectSession: (sessionID) => {
+      void selectSession(sessionID)
+    },
+    reload: () => {
+      const sessionID = active()
+      if (sessionID) void loadMessages(sessionID)
+      void loadSessions()
+    },
+    clearSession: () => {
+      setActive(undefined)
+      setThread([])
+      setDraft("")
+      setMenu(undefined)
+      turnCache.clear()
+      setCommandDialog(undefined)
+    },
+    rename: (sessionID) => {
+      const current = sessions().find((session) => session.id === sessionID)
+      setCommandDialog({ kind: "rename", sessionID, value: current?.title ?? "" })
+    },
+    openEditor: () => setCommandDialog({ kind: "editor", value: draft() }),
+    confirm: (message) => {
+      // La question est portée par le dialogue ; la promesse n'est résolue que par un clic.
+      void message
+      return new Promise<boolean>((resolve) => {
+        exitResolver = resolve
+        setCommandDialog({ kind: "exit" })
+      })
+    },
+    addActivity: (activity) => setCommandActivities((current) => [...current, activity]),
+    updateActivity: (id, status) =>
+      setCommandActivities((current) => current.map((item) => (item.id === id ? { ...item, status } : item))),
+  }
+
+  /** Une seule porte d'entrée : la ligne saisie est soit une commande, soit un prompt ordinaire. */
+  const dispatchCommand = async (text: string) => {
+    const result = await runCommandLine(text, {
+      sessionID: active(),
+      choices: commandOptions(),
+      transport: commandTransport,
+      host: commandHost,
+    })
+    if (result.ok) setDraft("")
+    return result
+  }
+
+  const commitCommandRename = async (sessionID: string, title: string) => {
+    await client.session.update({ sessionID, title, ...scope() }).catch((cause: unknown) => setError(String(cause)))
+    await loadSessions()
+  }
+
+  const onExitConfirmed = () => {
+    exitResolver?.(true)
+    exitResolver = undefined
+    setCommandDialog(undefined)
+  }
+
+  const onDeleteConfirmed = (sessionID: string) => {
+    const session = sessions().find((item) => item.id === sessionID)
+    setCommandDialog(undefined)
+    if (session) void removeSession(session)
+  }
+
   const replyPermission = async (request: PermissionRequest, reply: PermissionReply) => {
     // Optimistic removal: the server also emits `permission.replied`, which is authoritative.
     setPermissions((current) => dropPermission(current, request.id))
@@ -1633,8 +1796,15 @@ export default function App() {
 
   const send = async (event?: { preventDefault: () => void }) => {
     event?.preventDefault()
-    const sessionID = active()
     const text = draft().trim()
+    // Une ligne en tête de `/` est une commande de session — jamais un prompt à envoyer au modèle.
+    // `/new` agit même sans session active : le test doit donc précéder le garde-fou.
+    if (text.startsWith("/")) {
+      setMenu(undefined)
+      await dispatchCommand(text)
+      return
+    }
+    const sessionID = active()
     const files = attachments()
     if (!sessionID || (!text && files.length === 0)) return
     setDraft("")
@@ -2511,7 +2681,11 @@ export default function App() {
               <Show when={error()}>
                 <p class="error">{error()}</p>
               </Show>
+              <Show when={commandNotice()}>
+                <p class="notice" role="status">{commandNotice()}</p>
+              </Show>
               <For each={turns()}>{(turn, index) => renderTurn(turn, index())}</For>
+              <CommandActivityLines activities={commandActivities()} />
 
               {/* La seule écriture du fil : l'agent est bloqué tant qu'il n'a pas sa réponse. */}
               <Show when={activeQuestion()}>
@@ -2830,6 +3004,19 @@ export default function App() {
           </Show>
         </SettingsSheet>
       </Show>
+
+      <SessionCommandDialogs
+        dialog={commandDialog()}
+        onClose={closeCommandDialog}
+        onRename={(sessionID, title) => void commitCommandRename(sessionID, title)}
+        onExit={onExitConfirmed}
+        onDelete={onDeleteConfirmed}
+        onEditorSave={(text) => {
+          setDraft(text)
+          setCommandDialog(undefined)
+          input?.focus()
+        }}
+      />
     </div>
   )
 }
