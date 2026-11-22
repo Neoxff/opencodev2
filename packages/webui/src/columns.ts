@@ -20,10 +20,10 @@
 /** Largeur du centre en dessous de laquelle la concession s'enclenche. */
 export const CENTER_MIN = 640
 /** Bornes de glissement de la sidebar. */
-export const SIDEBAR_MIN = 264
+export const SIDEBAR_MIN = 258
 export const SIDEBAR_MAX = 420
-/** Largeur de la sidebar avant tout glissement. */
-export const SIDEBAR_DEFAULT = 280
+/** Largeur de la sidebar avant tout glissement — maquette validée. */
+export const SIDEBAR_DEFAULT = 258
 /** Rail de sidebar fermée : une colonne d'icônes de 24px entre 16px de marge. */
 export const SIDEBAR_COLLAPSED = 56
 /** En dessous de cette largeur de fenêtre, la sidebar se replie d'elle-même. */
@@ -31,8 +31,8 @@ export const SIDEBAR_AUTO_COLLAPSE = 1024
 /** Bornes de glissement du panneau de détails. */
 export const DETAILS_MIN = 300
 export const DETAILS_MAX = 520
-/** Largeur des détails avant tout glissement. */
-export const DETAILS_DEFAULT = 360
+/** Largeur des détails avant tout glissement — maquette validée. */
+export const DETAILS_DEFAULT = 300
 
 export type Columns = { sidebar: number; center: number; details: number }
 

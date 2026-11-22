@@ -1,0 +1,72 @@
+/* =============================================================================
+   Build 1 — coque UI (feat/ui-coque)
+   Surcharge chargée APRÈS styles.css : elle aligne la charpente sur la maquette
+   validée (docs/design/maquette-opencodev2-ui.html) sans réécrire le fichier
+   historique ni toucher au comportement de l'application.
+   ============================================================================= */
+
+:root {
+  /* Alias de la maquette — reprennent la valeur des jetons de tokens.css. */
+  --bg-0: var(--bg);
+  --bg-1: var(--panel);
+  --bg-2: var(--raise-2);
+  --line-1: var(--line);
+  --line-2: #2c2c31;
+  --text-1: var(--tx);
+  --text-2: var(--tx-2);
+  --text-3: var(--tx-3);
+  --danger: var(--red);
+  --attention: var(--amber);
+  --success: var(--green);
+
+  /* styles.css redéfinissait --font/--mono plus bas : on rétablit les piles de la maquette. */
+  --font: "Inter", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --disp: "Space Grotesk", system-ui, sans-serif;
+  --pix: "Pixelify Sans", "JetBrains Mono", monospace;
+
+  /* Colonne de lecture de la maquette (.col { max-width: 960px }). */
+  --measure: 960px;
+}
+
+/* Charpente : 258 px / souple / 300 px optionnel, gouttière de 10 px. */
+.layout {
+  gap: 10px;
+  padding: 10px 10px 0 0;
+  background: var(--bg);
+}
+
+/* Barre latérale : fond quasi opaque sur noir, sans filet droit. */
+.rail {
+  background: var(--side);
+  border-right: 0;
+}
+
+/* Panneau principal : noir pur, filet, rayon haut de 14 px. */
+.thread {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px 14px 0 0;
+}
+
+/* Panneau droit : même grammaire, masqué quand sa piste vaut 0. */
+.side {
+  min-width: 0;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--panel);
+  border-radius: 14px 14px 0 0;
+}
+
+.side.open {
+  border: 1px solid var(--line);
+}
+
+/* Logo : Pixelify Sans, comme dans la maquette. */
+.wordmark {
+  font-family: var(--pix);
+}
