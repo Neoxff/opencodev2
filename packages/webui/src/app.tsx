@@ -120,7 +120,8 @@ import { SESSION_LIMIT, groupByWorkspace, sessionDetails, splitSessions, type Pr
 import { subscribeEvents, type EventStreamState } from "./events"
 import { GitPanel } from "./git-panel"
 import RessourcesPanel from "./ressources-panel"
-import { gitApi } from "./git-client"
+import { RightPanel, type GoalAction } from "./right-panel"
+import { gitApi, type GitStatus } from "./git-client"
 import {
   activityFromStatus,
   createReloadGate,
@@ -211,6 +212,13 @@ export default function App() {
    */
   const [drawerOpen, setDrawerOpen] = createSignal(false)
   const [drawerTab, setDrawerTab] = createSignal<"session" | "decisions">("session")
+  /**
+   * Le panneau droit (« comme le CLI ») : cinq sections qui lisent les signaux déjà présents —
+   * contrat, statistiques, MCP, LSP, todos. Il partage la colonne `details` avec le tiroir.
+   */
+  const [panelOpen, setPanelOpen] = createSignal(true)
+  /** État Git réel du dépôt — pour le pied du panneau `dossier:branche`. */
+  const [gitStatus, setGitStatus] = createSignal<GitStatus>()
   /**
    * La **vue** du panneau principal : la conversation, ou le journal.
    *
@@ -511,7 +519,12 @@ export default function App() {
    * `stats` basculait bien son état mais la colonne restait à **0 px** — le panneau se rendait dans
    * une colonne invisible, et le bouton paraissait mort alors que c'était la largeur qui manquait.
    */
-  const detailsWidth = () => (drawerOpen() || permissions().length > 0 ? columns().details : 0)
+  const detailsWidth = () => {
+    // Le panneau droit se masque sous 1100 px (maquette) : on ne réserve alors pas sa colonne.
+    const drawer = drawerOpen() || permissions().length > 0
+    const panel = panelOpen() && viewport() >= 1100
+    return drawer || panel ? columns().details : 0
+  }
 
   const layoutStyle = () => ({
     "grid-template-columns": `${columns().sidebar}px minmax(0, 1fr) ${detailsWidth()}px`,
@@ -915,6 +928,82 @@ export default function App() {
     if (!result) return false
     await loadPlan(sessionID)
     return true
+  }
+
+  /**
+   * Les actions du panneau droit, écrites par la même route que l'édition du contrat. Les commandes
+   * `/goal-*` du TUI sont locales au terminal : le webui n'a pas de route serveur pour elles, il
+   * reproduit donc leur effet sur `goalState` par `PATCH /session/{id}` — le vrai chemin d'écriture.
+   */
+  const goalAction = async (action: GoalAction): Promise<boolean> => {
+    const sessionID = active()
+    if (!sessionID) return false
+    const raw = rawGoal()
+    if (!raw) return false
+    const base = raw as Record<string, unknown>
+    const version = typeof base.version === "number" ? base.version : 0
+    let changes: Record<string, unknown>
+    if (action === "approve") {
+      changes = { status: "approved", source: "user" }
+    } else if (action === "skip") {
+      changes = { status: "skipped", source: "user" }
+    } else {
+      // Generate / regenerate : même gabarit que le TUI, alimenté par le dernier prompt réel.
+      const source = promptHistory(messages())[0] ?? ""
+      changes = {
+        status: "draft",
+        source: "auto",
+        goal: source.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "Continuer la tâche demandée par l'utilisateur",
+        dod: ["Produire une réponse utile et actionnable alignée avec la demande en cours."],
+        outOfScope: [],
+      }
+    }
+    const payload = {
+      ...base,
+      ...changes,
+      version: action === "regenerate" || action === "generate" ? version + 1 : version,
+      updatedAt: Date.now(),
+    }
+    const result = await client.session
+      .update({
+        sessionID,
+        goalState: payload as Parameters<typeof client.session.update>[0]["goalState"],
+        ...scope(),
+      })
+      .catch((cause: unknown) => {
+        setError(String(cause))
+        return undefined
+      })
+    if (!result) return false
+    await loadPlan(sessionID)
+    return true
+  }
+
+  /** État MCP réel au montage — la section « réglages » ne le charge qu'à l'ouverture. */
+  const loadMcp = async () => {
+    const result = await client.mcp.status(scope()).catch(() => undefined)
+    const data = (result as { data?: Record<string, McpState> } | undefined)?.data
+    if (data) setMcp(data)
+  }
+
+  /** Configuration globale, lue pour le réglage `lsp` du panneau droit (19 ko). */
+  const loadPanelConfig = async () => {
+    const result = await client.global.config.get().catch(() => undefined)
+    const data = (result as { data?: Record<string, unknown> } | undefined)?.data
+    if (data) setConfig(data)
+  }
+
+  /** État Git réel — sans jeton injecté (Vite en développement), le pied affiche « — ». */
+  const loadGit = async () => {
+    const status = await gitApi.status().catch(() => undefined)
+    if (status) setGitStatus(status)
+  }
+
+  /** Dossier affiché dans le pied du panneau : dernier segment du répertoire de travail. */
+  const folderLabel = () => {
+    const dir = directory().trim() || serverPath() || ""
+    const parts = dir.split(/[\\/]/).filter(Boolean)
+    return parts.at(-1) ?? ""
   }
 
   const loadMessages = async (sessionID: string) => {
@@ -1732,6 +1821,10 @@ export default function App() {
     await loadPermissions()
     await loadQuestions()
     await loadPlugins()
+    // Le panneau droit lit ses cinq états réels au montage — aucun d'eux n'est fabriqué ici.
+    void loadMcp()
+    void loadPanelConfig()
+    void loadGit()
     // Le catalogue des modèles est payé au montage : le choix du modèle est dans la saisie, donc il
     // doit être prêt avant qu'on écrive. Les agents, eux, attendent la première ouverture (1,5 Mo).
     void loadModelCatalog()
@@ -2442,22 +2535,30 @@ export default function App() {
       {/* `busy` nomme l'état pour le CSS : c'est lui qui autorise un mouvement dans le fil (le
           curseur de la prose en cours), et rien au repos. */}
       <main class="thread" classList={{ busy: working() }}>
-        <Show when={columns().sidebar === 0 || notice()}>
-          <div class="thread-head">
-            <Show when={columns().sidebar === 0}>
-              <button class="ghost" title="Show sessions" onClick={toggleSidebar}>
-                ☰
-              </button>
-            </Show>
-            <Show when={notice()}>
-              {(state) => (
-                <span class="notice" classList={{ bad: state().bad }}>
-                  {state().text}
-                </span>
-              )}
-            </Show>
-          </div>
-        </Show>
+        <div class="thread-head">
+          <Show when={columns().sidebar === 0}>
+            <button class="ghost" title="Show sessions" onClick={toggleSidebar}>
+              ☰
+            </button>
+          </Show>
+          <Show when={notice()}>
+            {(state) => (
+              <span class="notice" classList={{ bad: state().bad }}>
+                {state().text}
+              </span>
+            )}
+          </Show>
+          {/* La porte du panneau droit vit ici, comme dans la maquette : en tête du fil. */}
+          <button
+            class="ghost rp-toggle"
+            title={panelOpen() ? "Hide details panel" : "Show details panel"}
+            aria-label={panelOpen() ? "Hide details panel" : "Show details panel"}
+            aria-pressed={panelOpen()}
+            onClick={() => setPanelOpen((open) => !open)}
+          >
+            ▤
+          </button>
+        </div>
 
         <Show when={active()} fallback={renderHome()}>
           {/* La barre des **vues**, au-dessus du chat. Elle commute le contenu du panneau principal
@@ -2672,6 +2773,22 @@ export default function App() {
           </Show>
         </Show>
       </main>
+
+      {/* Le panneau droit « comme le CLI » : cinq sections lues sur les signaux réels de la session. */}
+      <RightPanel
+        open={panelOpen()}
+        contract={contract()}
+        stats={stats()}
+        contextLimit={modelLimits()[composerModel()]}
+        mcp={mcp()}
+        lsp={typeof config().lsp === "boolean" ? { lsp: config().lsp } : undefined}
+        todos={todos()}
+        folder={folderLabel()}
+        branch={gitStatus()?.branch ?? ""}
+        version={health()?.version}
+        onGoalAction={goalAction}
+        onSaveContract={saveContract}
+      />
 
       <aside class="side" classList={{ open: drawerOpen() }}>
         <div class="side-inner">
