@@ -24,7 +24,8 @@
     "prepare": "husky",
     "random": "echo 'Random script'",
     "sso": "aws sso login --sso-session=opencode --no-browser",
-    "test": "echo 'do not run tests from root' && exit 1"
+    "test": "echo 'do not run tests from root' && exit 1",
+    "ui:diff": "bun scripts/ui-diff.ts"
   },
   "workspaces": {
     "packages": [
@@ -104,6 +105,9 @@
     "husky": "9.1.7",
     "oxlint": "1.60.0",
     "oxlint-tsgolint": "0.21.0",
+    "pixelmatch": "8.0.0",
+    "playwright-core": "1.65.1",
+    "pngjs": "7.0.0",
     "prettier": "3.6.2",
     "semver": "^7.6.0",
     "sst": "catalog:",

@@ -53,6 +53,50 @@ function notFound() {
   return HttpServerResponse.jsonUnsafe({ error: "Not Found" }, { status: 404 })
 }
 
+const ADOPTED_CSS_MARKER = "<!--OPENCODEV2_UI_CSS-->"
+const ADOPTED_JS_MARKER = "<!--OPENCODEV2_UI_JS-->"
+const ADOPTED_UI_MODE = "demo"
+
+/** Ré-assemble la maquette découpée, sans toucher une seule octave de son HTML/CSS/JS. */
+export function assembleAdoptedUI(html: Uint8Array, css: Uint8Array, js: Uint8Array): Uint8Array {
+  const decoder = new TextDecoder()
+  const text = decoder
+    .decode(html)
+    .replace(ADOPTED_CSS_MARKER, decoder.decode(css))
+    .replace(ADOPTED_JS_MARKER, decoder.decode(js))
+  return new TextEncoder().encode(text)
+}
+
+function adoptedUIScriptHash(body: Uint8Array) {
+  const match = new TextDecoder().decode(body).match(/<script>([\s\S]*?)<\/script>/)
+  return match ? createHash("sha256").update(match[1]).digest("base64") : ""
+}
+
+const adoptedCSP = (hash = "") =>
+  `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'${hash ? ` 'sha256-${hash}'` : ""}; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; media-src 'self' data:; connect-src * data:`
+
+function adoptedUIResponse(body: Uint8Array) {
+  const headers = new Headers({
+    "content-type": "text/html; charset=utf-8",
+    "content-security-policy": adoptedCSP(adoptedUIScriptHash(body)),
+    "x-opencodev2-ui-mode": ADOPTED_UI_MODE,
+  })
+  return HttpServerResponse.raw(body, { headers })
+}
+
+function serveAdoptedUIEffect(fs: AppFileSystem.Interface, dir: string) {
+  return Effect.gen(function* () {
+    const base = path.join(dir, "ui")
+    const read = (name: string) =>
+      fs.readFile(path.join(base, name)).pipe(Effect.catch(() => Effect.succeed(undefined as Uint8Array | undefined)))
+    const html = yield* read("ui.html")
+    const css = yield* read("ui.css")
+    const js = yield* read("ui.js")
+    if (!html || !css || !js) return notFound()
+    return adoptedUIResponse(assembleAdoptedUI(html, css, js))
+  })
+}
+
 /**
  * Injecte le jeton Git local dans le HTML servi sous forme de balise meta, pour
  * que le panneau « Dépôt » puisse appeler l'API /opencodev2/git/*. Le jeton est
@@ -118,6 +162,7 @@ function resolveWithinRoot(dir: string, requestPath: string): string | null {
  */
 export function serveDirectoryUIEffect(requestPath: string, fs: AppFileSystem.Interface, dir: string) {
   return Effect.gen(function* () {
+    if (requestPath === "/ui" || requestPath === "/ui/") return yield* serveAdoptedUIEffect(fs, dir)
     const root = path.resolve(dir)
     const index = path.join(root, "index.html")
 
