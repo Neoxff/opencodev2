@@ -1,0 +1,15 @@
+{
+  "sessionID": "ses_e004e70e4ffeLfRBa2wwr507vN",
+  "config": {
+    "chars": 97,
+    "firstLine": "{",
+    "bytes": 149526
+  },
+  "logs": {
+    "lines": 1,
+    "firstLine": "17:58:30 <i>info</i>  session ses_df6b6d198ffeOlPaUPfmHjNenU · status idle",
+    "bytes": 144583
+  },
+  "configPath": "/home/joachim/Documents/opencodev2/docs/design/captures/ui-config-logs/config.png",
+  "logsPath": "/home/joachim/Documents/opencodev2/docs/design/captures/ui-config-logs/logs.png"
+}

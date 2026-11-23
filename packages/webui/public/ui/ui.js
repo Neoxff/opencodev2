@@ -1,12 +1,16 @@
 (function(){
 const DEMO = new URLSearchParams(location.search).has("demo");
-let dataApi=null,composerApi=null,composerConfig=null,composerSelection=null,composerMetrics=null,currentSessionID=null,canSteer=false,composerTimer=null;
+let composerApi=null,composerConfig=null,composerSelection=null,composerMetrics=null,composerTimer=null;
 const $=s=>document.querySelector(s);
 const ic=(n,c)=>'<svg class="i '+(c||'')+'"><use href="#'+n+'"/></svg>';
 const escText=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const panel=$('#panel'),col=$('#col'),scroll=$('#scroll'),ta=$('#ta'),dock=$('#dock'),app=$('#app');
 let running=false,tab='conv',sel=null,timers=[];
+let dataApi=null,configApi=null,currentSession=null,currentSessionID=null;
+let canSteer=false,configEditing=false,logTimer=null;
+let liveSource=null,liveSession=null,liveSeen=new Set(),liveIndex=0,liveMessages=[],liveRoles={},liveRunning=false;
+const lineIndexByKey=new Map();
 
 const S={agent:'orchestrator',variant:'max',model:'Tidepool Alpha Free',decision:'Tidepool Alpha Free',vision:'Hy4 Flash Free',ctx:634,tps:52};
 
@@ -34,6 +38,7 @@ function hello(){const d=new Date(),h=d.getHours(),g=h<5?'Bonne nuit':h<12?'Bonj
   const J=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'],M=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   return g+' · '+J[d.getDay()]+' '+d.getDate()+' '+M[d.getMonth()];}
 function welcome(){
+  closeLiveStream();stopLogPolling();stopComposerPolling();timers.forEach(clearInterval);timers=[];
   const m=MOTTOS[nextIndex()];let k=0;running=false;setRun();
   $('#welcome').innerHTML='<div class="hello">'+ic('spark','s st')+hello()+'</div><h2 class="motto">'+m[0].split(' ').map(w=>'<span class="w" style="--k:'+(k++)+'">'+w+'</span>').join(' ')+'</h2><div class="rule"></div><p class="sub">'+m[1]+'</p><div class="stamp"><span><kbd>/</kbd>commands</span><span><kbd>@</kbd>files</span><span><kbd>ctrl+p</kbd>palette</span></div>';
   $('#chips').innerHTML='<button class="chip" data-a="res">'+ic('clock','s')+'Resume · Correctif dépôt divergent</button><button class="chip" data-a="/humanizer ">'+ic('spark','s')+'<code>/humanizer</code></button><button class="chip" data-a="/mcps">'+ic('plug','s')+'<code>/mcps</code></button><button class="chip" data-a="@">'+ic('folder','s')+'<code>@</code> files</button>';
@@ -98,32 +103,115 @@ function disableArchived(){
 sf.addEventListener('input',renderTree);
 $('#bSearch').onclick=()=>{sf.classList.toggle('on');if(sf.classList.contains('on'))sf.focus();else{sf.value='';renderTree();}};
 $('#bHist').onclick=()=>H.sessions();
+function findMaquetteSession(id){
+  for(let wi=0;wi<WS.length;wi++){const si=WS[wi].s.findIndex(s=>s.id===id);if(si>=0)return [wi,si];}
+  return null;
+}
+function conversationStamp(i,line){
+  if(line?.ts&&Number.isFinite(line.ts))return new Date(line.ts).toISOString().slice(11,19);
+  return stamp(i);
+}
+function upsertConversationLine(line){
+  if(!line)return;
+  const key=String(line.key||`line:${liveIndex}`);line.key=key;
+  let index=lineIndexByKey.get(key);
+  if(index===undefined){index=liveIndex++;lineIndexByKey.set(key,index);}
+  line.i=index;
+  const html=dataApi.renderLine(line,{icon:ic,stamp:conversationStamp});
+  if(!html)return;
+  const old=[...col.querySelectorAll('[data-line]')].find(el=>el.dataset.line===key);
+  if(old){
+    const companion=old.nextElementSibling;
+    old.insertAdjacentHTML('beforebegin',html);old.remove();
+    if(companion&&(companion.classList.contains('tt')||companion.classList.contains('out')))companion.remove();
+  }else col.insertAdjacentHTML('beforeend',html);
+  tick();scroll.scrollTop=1e6;sbar();
+}
+function renderConversation(lines){
+  col.innerHTML='';lineIndexByKey.clear();liveIndex=0;
+  for(const line of (lines||[]))upsertConversationLine(line);
+  scroll.scrollTop=1e6;sbar();
+}
+function applyGoal(goal){
+  if(!goal)return;
+  GOAL.st=goal.st||'pending';GOAL.dod=Array.isArray(goal.dod)?goal.dod:[];GOAL.oos=Array.isArray(goal.oos)?goal.oos:[];rp();
+}
+function updateSessionBusy(sessionID,busy){
+  const found=findMaquetteSession(sessionID);if(!found)return;
+  WS[found[0]].s[found[1]].busy=busy?1:0;renderTree();
+}
+function handleLiveEvent(ev,sessionID){
+  const p=ev.properties||{};
+  if(p.sessionID&&p.sessionID!==sessionID)return;
+  if(ev.type==='session.status'){
+    const busy=dataApi.statusFromEvent(ev);
+    if(busy!==undefined){running=busy;liveRunning=busy;setRun();status();updateSessionBusy(sessionID,busy);}
+    return;
+  }
+  if(ev.type==='session.updated'){
+    const info=p.info||{};
+    if(info.title){
+      currentSession={...(currentSession||{}),...info};$('#title').textContent=info.title;
+      const found=findMaquetteSession(sessionID);if(found){WS[found[0]].s[found[1]].t=info.title;renderTree();}
+    }
+    return;
+  }
+  if(ev.type==='todo.updated'){applyGoal(dataApi.goalFromSession(currentSession,p.todos||[]));return;}
+  if(ev.type==='message.updated'){
+    const info=p.info||{};
+    if(info.id){
+      liveRoles[info.id]=info.role;
+      const idx=liveMessages.findIndex(m=>m.info?.id===info.id);
+      if(idx>=0)liveMessages[idx]={...liveMessages[idx],info};else liveMessages.push({info,parts:[]});
+    }
+    return;
+  }
+  if(ev.type==='message.part.updated'){
+    const part=p.part||{};
+    if(part.messageID&&!liveRoles[part.messageID])liveRoles[part.messageID]='assistant';
+    const queued=dataApi.queuedUserIDs(liveMessages,running);
+    for(const line of dataApi.eventToLines(ev,{sessionID,roles:liveRoles,queued}))upsertConversationLine(line);
+    return;
+  }
+  if(ev.type==='session.diff'||ev.type==='file.edited'){
+    for(const line of dataApi.eventToLines(ev,{sessionID,roles:liveRoles}))upsertConversationLine(line);
+  }
+}
+function closeLiveStream(){if(liveSource){liveSource.close();liveSource=null;}liveSession=null;}
+function openLiveStream(sessionID){
+  closeLiveStream();if(!sessionID||!dataApi)return;
+  liveSession=sessionID;
+  try{
+    liveSource=new EventSource('/global/event');
+    liveSource.onmessage=e=>{let raw;try{raw=JSON.parse(e.data);}catch{return;}
+      const ev=dataApi.unwrapGlobalEvent(raw);if(ev)handleLiveEvent(ev,sessionID);};
+  }catch(e){console.error(e);}
+}
+function applyConversation(loaded){
+  currentSession=loaded.session;currentSessionID=loaded.session?.id||currentSessionID;
+  $('#title').textContent=loaded.session?.title||loaded.session?.slug||'Session';
+  applyGoal(loaded.goal);
+  running=!!loaded.busy;liveRunning=running;setRun();status();
+  liveMessages=Array.isArray(loaded.messages)?[...loaded.messages]:[];
+  liveRoles={...(loaded.roles||{})};
+  renderConversation(loaded.lines||[]);
+  timers.forEach(clearInterval);timers=[];
+  tick();timers.push(setInterval(tick,1000));
+  openLiveStream(currentSessionID);
+}
 async function openRealSession(wi,si){
   const s=WS[wi]?.s[si];if(!s?.id||!dataApi)return;
+  currentSessionID=s.id;
   try{
-    currentSessionID=s.id;
-    const loaded=composerApi?await composerApi.loadSessionState(s.id):null;
-    const session=loaded?.session||(await dataApi.loadSession(s.id)).session;
-    const rows=loaded?.messages||[];
-    $('#title').textContent=session.title||session.slug||s.t;
-    col.innerHTML='';
-    if(loaded){
-      for(const message of rows){
-        const role=message?.info?.role;
-        for(const part of (Array.isArray(message?.parts)?message.parts:[])){
-          if(part?.type!=='text'||!part.text||part.ignored||part.synthetic)continue;
-          const d=document.createElement('div');d.className=role==='user'?'me':'p';d.textContent=part.text;col.append(d);
-        }
-      }
-      applyComposerSession(loaded);
-    }else{
-      const simple=await dataApi.loadSession(s.id);
-      for(const m of simple.messages){const d=document.createElement('div');d.className=m.role==='user'?'me':'p';d.textContent=m.text;col.append(d);}
+    const loaded=await dataApi.loadConversation(s.id);
+    applyConversation(loaded);
+    if(composerApi){
+      const state=await composerApi.loadSessionState(s.id);
+      applyComposerSession(state);
     }
-    sbar();
   }catch(e){console.error(e);toast('Session indisponible');}
 }
-function openSession(wi,si){sel=[wi,si];panel.classList.remove('is-welcome');setLift();$('#title').textContent=WS[wi].s[si].t;$('#goalb').style.opacity=1;renderTree();switchTab('conv',true);if(!DEMO&&WS[wi].s[si].id)void openRealSession(wi,si);else loadThread(wi===2&&si===0);}
+function openSession(wi,si){stopComposerPolling();sel=[wi,si];panel.classList.remove('is-welcome');setLift();$('#title').textContent=WS[wi].s[si].t;$('#goalb').style.opacity=1;renderTree();switchTab('conv',true);if(!DEMO&&WS[wi].s[si].id)void openRealSession(wi,si);else loadThread(wi===2&&si===0);}
 
 /* ---------- Conversation (libellés d'origine en anglais) ---------- */
 let TS=0;const stamp=i=>{const s=12*3600+3*60+24+i*9;return String(Math.floor(s/3600)%24).padStart(2,'0')+':'+String(Math.floor(s/60)%60).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
@@ -159,18 +247,59 @@ function tick(){document.querySelectorAll('.live').forEach(e=>e.textContent='run
 function sbar(){const u=$('#up'),t=$('#thumb'),can=scroll.scrollHeight>scroll.clientHeight+4&&tab==='conv';u.style.opacity=can?1:0;t.style.opacity=can?1:0;
   if(can){const r=scroll.scrollTop/(scroll.scrollHeight-scroll.clientHeight);t.style.top=(34+r*(scroll.clientHeight-100))+'px';}}
 scroll.addEventListener('scroll',sbar);
-col.addEventListener('click',e=>{const r=e.target.closest('.row.run');if(r&&r.nextElementSibling)r.nextElementSibling.classList.toggle('open');});
+col.addEventListener('click',e=>{
+  const r=e.target.closest('.row.run');if(r&&r.nextElementSibling){r.nextElementSibling.classList.toggle('open');return;}
+  const t=e.target.closest('.row.th');if(t&&t.nextElementSibling?.classList.contains('tt')){
+    const tt=t.nextElementSibling;tt.style.display=tt.style.display==='block'?'':'block';
+  }
+});
 function append(html){col.insertAdjacentHTML('beforeend',html);scroll.scrollTop=1e6;sbar();}
 
 /* ---------- Onglets Conversation / Config / Logs ---------- */
 function switchTab(t,silent){tab=t;document.querySelectorAll('.tab[data-t]').forEach(x=>x.classList.toggle('on',x.dataset.t===t));
+  stopLogPolling();configEditing=false;
   if(silent)return;if(panel.classList.contains('is-welcome')){panel.classList.remove('is-welcome');setLift();}
-  if(t==='logs')col.innerHTML='<div class="logline">'+['12:03:24 <i>info</i>  opencodev2 server listening on http://127.0.0.1:4097','12:03:25 <i>info</i>  daemon: autostart disabled','12:03:41 <i>mcp</i>   github connected (12 tools)','12:03:41 <i>mcp</i>   context7 connected (2 tools)','12:04:02 <i>git</i>   fetch origin: 2 commits behind','12:06:19 <i>skill</i> humanizer loaded','12:07:55 <i>agent</i> '+S.agent+' · '+S.model+' · 48.7s'].join('\n')+'</div>';
-  else if(t==='config')col.innerHTML='<div class="cfgh"><span>opencodev2.config.json</span><span>read-only preview</span></div><div class="cfg">{\n  <b>"repo"</b>: "Neoxff/opencodev2",\n  <b>"branch"</b>: "main",\n  <b>"autoGit"</b>: <u>false</u>,\n  <b>"daemon"</b>: { <b>"autostart"</b>: <u>false</u> },\n  <b>"sky"</b>: "static",\n  <b>"glass"</b>: "off",\n  <b>"mcp"</b>: { <b>"max_sessions"</b>: 1 }\n}</div>';
+  if(t==='logs'){
+    if(!DEMO&&configApi)void renderRealLogs();
+    else col.innerHTML='<div class="logline">'+['12:03:24 <i>info</i>  opencodev2 server listening on http://127.0.0.1:4097','12:03:25 <i>info</i>  daemon: autostart disabled','12:03:41 <i>mcp</i>   github connected (12 tools)','12:03:41 <i>mcp</i>   context7 connected (2 tools)','12:04:02 <i>git</i>   fetch origin: 2 commits behind','12:06:19 <i>skill</i> humanizer loaded','12:07:55 <i>agent</i> '+S.agent+' · '+S.model+' · 48.7s'].join('\n')+'</div>';
+  }
+  else if(t==='config'){
+    if(!DEMO&&configApi)void renderRealConfig();
+    else col.innerHTML='<div class="cfgh"><span>opencodev2.config.json</span><span>read-only preview</span></div><div class="cfg">{\n  <b>"repo"</b>: "Neoxff/opencodev2",\n  <b>"branch"</b>: "main",\n  <b>"autoGit"</b>: <u>false</u>,\n  <b>"daemon"</b>: { <b>"autostart"</b>: <u>false</u> },\n  <b>"sky"</b>: "static",\n  <b>"glass"</b>: "off",\n  <b>"mcp"</b>: { <b>"max_sessions"</b>: 1 }\n}</div>';
+  }
   else if(!DEMO&&sel&&WS[sel[0]]?.s[sel[1]]?.id)void openRealSession(sel[0],sel[1]);
   else loadThread(sel&&sel[0]===2&&sel[1]===0);
   sbar();}
 document.querySelectorAll('.tab[data-t]').forEach(b=>b.onclick=()=>switchTab(b.dataset.t));
+
+function stopLogPolling(){if(logTimer){clearInterval(logTimer);logTimer=null;}}
+function escHtml(v){return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+async function renderRealConfig(){
+  col.innerHTML='<div class="cfgh"><span>opencodev2.config.json</span><span>read-only preview</span></div><div class="cfg" id="cfgEdit" contenteditable="plaintext-only" spellcheck="false"></div>';
+  try{
+    const config=await configApi.loadConfig();const el=$('#cfgEdit');if(!el||tab!=='config')return;
+    el.textContent=configApi.configToJson(config);configEditing=true;
+    el.addEventListener('blur',()=>{void saveConfigFromEditor();});
+  }catch(e){console.error(e);toast('Config indisponible');}
+}
+async function saveConfigFromEditor(){
+  const el=$('#cfgEdit');if(!el||!configApi||DEMO)return;
+  const checked=configApi.validateConfigPatch(el.textContent||'');
+  if(!checked.ok){toast(checked.error||'Configuration invalide');return;}
+  try{await configApi.updateConfig(checked.value);toast('Config enregistrée');}
+  catch(e){console.error(e);toast('Enregistrement impossible');}
+}
+async function renderRealLogs(){
+  col.innerHTML='<div class="logline" id="logView">Chargement…</div>';
+  const draw=async()=>{
+    if(tab!=='logs')return;
+    try{
+      const lines=currentSessionID?await configApi.loadSessionLog(currentSessionID):configApi.formatLogLines([],{},'local');
+      const el=$('#logView');if(el)el.textContent=lines.join('\n');
+    }catch(e){const el=$('#logView');if(el)el.textContent='Journal indisponible';}
+  };
+  await draw();stopLogPolling();logTimer=setInterval(()=>{void draw();},3000);
+}
 
 /* ---------- Panneau droit : Goal, Context, MCP, LSP, Todo ---------- */
 const GOAL={st:'pending',dod:['Six états du panneau Dépôt testés','Aucun nouveau test en échec','Fond noir pur partout','Verre limité à 2 surfaces','Rapport avec preuves'],oos:['Thème clair','Rust pour le ciel','Synchronisation automatique amont','Rendu markdown en Rust']};
@@ -239,7 +368,7 @@ function startComposerPolling(id){
     if(!composerApi||!composerConfig)return;
     try{
       const loaded=await composerApi.loadSessionState(id);
-      if(loaded.busy!==running){running=loaded.busy;setRun();}
+      if(loaded.busy!==running){running=loaded.busy;liveRunning=loaded.busy;setRun();}
       const model=composerConfig.models.find(m=>m.id===loaded.session?.model?.id)||composerConfig.models.find(m=>m.id===composerSelection?.modelID);
       composerMetrics=composerApi.sessionMetrics(loaded.session,loaded.messages,model);
       status();
@@ -305,13 +434,14 @@ const H={
   if(!dataApi)return;
   try{
     const created=await dataApi.createSession();
+    currentSessionID=created.id;
     const workspaces=await dataApi.loadSidebarData();
     WS.splice(0,WS.length,...workspaces);renderTree();
     for(let wi=0;wi<WS.length;wi++){const si=WS[wi].s.findIndex(s=>s.id===created.id);if(si>=0){openSession(wi,si);break;}}
   }catch(e){console.error(e);toast('Création impossible');}
 },
- rename:()=>{openDlg('<h3>Rename session<kbd>Esc</kbd></h3><input class="in" id="rn" value="'+$('#title').textContent.replace(/"/g,'')+'"><div class="ga"><button class="gb" id="rok">Rename</button></div>');setTimeout(()=>$('#rn').select(),30);
-   const ok=()=>{const v=$('#rn').value.trim();if(v&&sel){WS[sel[0]].s[sel[1]].t=v;$('#title').textContent=v;renderTree();}closeDlg();};$('#rok').onclick=ok;$('#rn').onkeydown=e=>{if(e.key==='Enter')ok();};},
+  rename:()=>{openDlg('<h3>Rename session<kbd>Esc</kbd></h3><input class="in" id="rn" value="'+escHtml($('#title').textContent)+'"><div class="ga"><button class="gb" id="rok">Rename</button></div>');setTimeout(()=>$('#rn').select(),30);
+    const ok=async()=>{const v=$('#rn').value.trim();if(v&&sel){try{if(!DEMO&&configApi&&WS[sel[0]]?.s[sel[1]]?.id)await configApi.renameSession(WS[sel[0]].s[sel[1]].id,v);WS[sel[0]].s[sel[1]].t=v;$('#title').textContent=v;renderTree();toast('Renamed');}catch(e){console.error(e);toast('Renommage impossible');}}closeDlg();};$('#rok').onclick=()=>{void ok();};$('#rn').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();void ok();}};},
  review:()=>append(R.del('Review uncommitted changes',{i:0,l:1,t:'12s'})+R.p('Revue terminée : <code>2</code> fichiers modifiés, aucun secret détecté, <code>1</code> remarque sur <code>git-panel.tsx</code>.',{l:1,i:1})),
  sessions:()=>{const all=[];WS.forEach((w,wi)=>w.s.forEach((s,si)=>all.push([s.t,w.n+' · '+s.m,wi,si])));openList('Switch session',all.map(x=>[x[0],x[1]]),$('#title').textContent,n=>{const x=all.find(y=>y[0]===n);openSession(x[2],x[3]);});},
  share:()=>toast('Lien de partage local copié (simulé)'),
@@ -375,80 +505,98 @@ function openPalette(q){
 $('#pal').onclick=()=>openPalette('');
 
 /* ---------- Envoi (file d'attente si l'agent travaille) ---------- */
-async function interruptAgent(){
-  if(!currentSessionID||!composerApi){running=false;setRun();status();toast('Interrupted');return;}
-  try{
-    await composerApi.abortSession(currentSessionID);
-    running=false;setRun();status();stopComposerPolling();toast('Interrupted');
-  }catch(e){console.error(e);toast('Interruption impossible');}
-}
-async function ensureSession(){
+async function ensureCurrentSession(){
   if(currentSessionID)return currentSessionID;
-  const created=await dataApi.createSession();
-  const workspaces=await dataApi.loadSidebarData();
-  WS.splice(0,WS.length,...workspaces);disableArchived();renderTree();
-  const found=findMaquetteSession(created.id);
-  if(found)openSession(found[0],found[1]);
-  currentSessionID=created.id;
-  $('#title').textContent=created.title||'New session';$('#goalb').style.opacity=1;
-  panel.classList.remove('is-welcome');setLift();
-  return created.id;
+  if(!dataApi)return null;
+  try{
+    const created=await dataApi.createSession();
+    const workspaces=await dataApi.loadSidebarData();
+    WS.splice(0,WS.length,...workspaces);disableArchived();renderTree();
+    const found=findMaquetteSession(created.id);
+    if(found)openSession(found[0],found[1]);
+    currentSessionID=created.id;
+    $('#title').textContent=created.title||'New session';$('#goalb').style.opacity=1;
+    panel.classList.remove('is-welcome');setLift();
+    return created.id;
+  }catch(e){console.error(e);toast('Session indisponible');return null;}
 }
+async function realSend(v,steer){
+  const sid=await ensureCurrentSession();if(!sid)return;
+  const payload=composerApi?composerApi.buildPromptPayload(v,composerSelection||{},steer?'steer':'send')
+    :configApi?configApi.buildPromptPayload(v,steer?{steer:true}:{})
+    :{parts:[{type:'text',text:v}]};
+  if(panel.classList.contains('is-welcome')){panel.classList.remove('is-welcome');setLift();$('#goalb').style.opacity=1;col.innerHTML='';}
+  if(tab!=='conv')switchTab('conv',true);
+  try{
+    if(composerApi)await composerApi.sendPrompt(sid,payload);
+    else if(configApi)await configApi.sendPrompt(sid,payload);
+    else await dataApi.sendPrompt(sid,v);
+    running=true;liveRunning=true;setRun();status();
+    if(composerApi)startComposerPolling(sid);
+  }catch(e){console.error(e);toast('Envoi impossible');}
+}
+async function interruptAgent(){
+  if(!currentSessionID||(!composerApi&&!configApi)){
+    running=false;liveRunning=false;setRun();stopComposerPolling();status();toast('Interrupted');return;
+  }
+  try{
+    if(composerApi)await composerApi.abortSession(currentSessionID);
+    else await configApi.abortSession(currentSessionID);
+  }catch(e){console.error(e);toast('Interruption impossible');}
+  running=false;liveRunning=false;setRun();stopComposerPolling();status();toast('Interrupted');
+}
+async function realInterrupt(){await interruptAgent();}
 async function submit(mode='send'){
   const v=ta.value.trim();if(!v)return;ta.value='';menu.classList.remove('on');
   const first=v.split(/\s+/)[0],c=CMD.find(x=>x.n===first);
   if(c){runCmd(c,v.slice(first.length).trim());return;}
-  if(!DEMO&&composerApi){
-    try{
-      const sid=await ensureSession();
-      const payload=composerApi.buildPromptPayload(v,composerSelection||{},mode==='steer'?'steer':'send');
-      if(panel.classList.contains('is-welcome')){panel.classList.remove('is-welcome');setLift();$('#goalb').style.opacity=1;col.innerHTML='';}
-      if(tab!=='conv')switchTab('conv',true);
-      const me=document.createElement('div');me.className='me';me.textContent=v;
-      if(running){const q=document.createElement('span');q.className='q';q.textContent=mode==='steer'?'steer':'queued';me.append(q);}
-      col.append(me);scroll.scrollTop=1e6;sbar();
-      await composerApi.sendPrompt(sid,payload);
-      running=true;setRun();status();startComposerPolling(sid);
-    }catch(e){console.error(e);toast('Envoi impossible');}
-    return;
-  }
-  if(panel.classList.contains('is-welcome')){panel.classList.remove('is-welcome');setLift();$('#title').textContent=v.length>46?v.slice(0,46)+'…':v;$('#goalb').style.opacity=1;col.innerHTML='';}
-  if(tab!=='conv')switchTab('conv',true);
-  const me=document.createElement('div');me.className='me';me.textContent=v;if(running){const q=document.createElement('span');q.className='q';q.textContent='queued';me.append(q);}col.append(me);
-  setTimeout(()=>append(R.th({l:1,i:0,s:'4s',c:'812'})+R.p('Compris. Je lance l’étape et je te fais un rapport avec les preuves.',{l:1,i:1})),400);
-  scroll.scrollTop=1e6;sbar();
+  await realSend(v,mode==='steer');
 }
-function send(){void submit('send');}
-$('#send').onclick=()=>{
-  if(running&&!DEMO){void interruptAgent();return;}
-  if(running&&!ta.value.trim()){running=false;setRun();status();toast('Interrupted');return;}
-  send();
-};
+function send(){
+  const v=ta.value.trim();
+  if(running&&!v){if(!DEMO)void interruptAgent();else{running=false;setRun();status();toast('Interrupted');}return;}
+  void submit('send');
+}
+function confirmDelete(){
+  if(!sel)return;
+  const name=WS[sel[0]]?.s[sel[1]]?.t||'';
+  openDlg('<h3>Delete session<kbd>Esc</kbd></h3><p>Supprimer « '+escHtml(name)+' » ?</p><div class="ga"><button class="gb" id="dno">Cancel</button><button class="gb" id="dyes">Delete</button></div>');
+  $('#dno').onclick=closeDlg;
+  $('#dyes').onclick=()=>{void deleteSelected();};
+}
+async function deleteSelected(){
+  if(!sel)return;
+  const id=WS[sel[0]]?.s[sel[1]]?.id;
+  closeDlg();
+  try{
+    if(!DEMO&&configApi&&id)await configApi.deleteSession(id);
+    WS[sel[0]].s.splice(sel[1],1);sel=null;renderTree();welcome();toast('Session supprimée');
+  }catch(e){console.error(e);toast('Suppression impossible');}
+}
 $('#newbtn').onclick=()=>H.new();
 $('#reopen').onclick=()=>{sel=null;renderTree();welcome();};
 
 /* ---------- Raccourcis clavier ---------- */
 addEventListener('keydown',e=>{
+  if(!DEMO&&configApi){
+    const d=configApi.keyboardDecision(e,{running,canSteer,hasSelection:!!sel,configEditing:tab==='config'});
+    if(d==='palette'){e.preventDefault();openPalette('');return;}
+    if(d==='new'){e.preventDefault();void H.new();return;}
+    if(d==='save-config'){e.preventDefault();void saveConfigFromEditor();return;}
+    if(d==='rename'){e.preventDefault();H.rename();return;}
+    if(d==='delete'){e.preventDefault();confirmDelete();return;}
+    if(d==='interrupt'){e.preventDefault();void realInterrupt();return;}
+    if(d==='steer'){e.preventDefault();const v=ta.value.trim();if(v){ta.value='';void realSend(v,true);}else toast('Steer nécessite un message');return;}
+    if(d==='unsupported'){e.preventDefault();toast('Steer indisponible');return;}
+  }
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='p'){e.preventDefault();openPalette('');return;}
   if(e.altKey&&e.key.toLowerCase()==='n'){e.preventDefault();H.new();return;}
-  if(e.altKey&&e.key.toLowerCase()==='s'){
-    e.preventDefault();
-    if(!DEMO&&composerApi){
-      const decision=composerApi.keyboardDecision(e,{running,canSteer});
-      if(decision==='steer')void submit('steer');
-      else if(decision==='unsupported')toast('Steer non pris en charge par ce serveur');
-      else if(decision==='send')void submit('send');
-      return;
-    }
-    toast('Steer : consigne injectée dans le tour en cours');return;
-  }
+  if(e.altKey&&e.key.toLowerCase()==='s'){e.preventDefault();toast('Steer : consigne injectée dans le tour en cours');return;}
   if((e.ctrlKey)&&e.key.toLowerCase()==='r'&&sel){e.preventDefault();H.rename();return;}
-  if((e.ctrlKey)&&e.key.toLowerCase()==='d'&&sel){e.preventDefault();const w=WS[sel[0]];w.s.splice(sel[1],1);sel=null;renderTree();welcome();toast('Session supprimée');return;}
   if(e.key==='Escape'){
     if(ov.classList.contains('on'))closeDlg();
     else if(running&&!menu.classList.contains('on')){
-      if(!DEMO){void interruptAgent();return;}
-      running=false;setRun();status();toast('Interrupted');
+      if(!DEMO)void interruptAgent();else{running=false;setRun();status();toast('Interrupted');}
     }
   }
 });
@@ -470,11 +618,13 @@ if(innerWidth<1360)app.classList.remove('rp');
 async function bootData(){
   if(DEMO)return true;
   try{
-    const [data,composer]=await Promise.all([import('/ui/data.js'),import('/ui/composer.js')]);
-    dataApi=data;composerApi=composer;
-    const [workspaces,config]=await Promise.all([dataApi.loadSidebarData(),composerApi.loadComposerConfig()]);
+    const [data,composer,config]=await Promise.all([import('/ui/data.js'),import('/ui/composer.js'),import('/ui/config-logs.js')]);
+    dataApi=data;composerApi=composer;configApi=config;
+    const caps=await configApi.loadCapabilities().catch(()=>({canSteer:false}));canSteer=!!caps.canSteer;
+    const [workspaces,composerConfig]=await Promise.all([dataApi.loadSidebarData(),composerApi.loadComposerConfig()]);
     WS.splice(0,WS.length,...workspaces);
-    applyComposerConfig(config);
+    applyComposerConfig(composerConfig);
+    canSteer=canSteer||!!composerConfig?.canSteer;
     disableArchived();
     return true;
   }catch(e){console.error(e);toast('Données indisponibles');return false;}

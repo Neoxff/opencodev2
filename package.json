@@ -26,6 +26,9 @@
     "sso": "aws sso login --sso-session=opencode --no-browser",
     "test": "echo 'do not run tests from root' && exit 1",
     "ui:diff": "bun scripts/ui-diff.ts",
+    "ui:capture-conversation": "bun scripts/ui-conversation-capture.ts",
+    "ui:capture-config": "bun scripts/ui-config-logs-capture.ts",
+    "ui:keys-config": "bun scripts/ui-config-logs-keys.ts",
     "ui:capture-composeur": "bun scripts/ui-composeur-capture.ts",
     "ui:keys-composeur": "bun scripts/ui-composeur-keys.ts"
   },
