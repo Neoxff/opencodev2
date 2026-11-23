@@ -25,7 +25,9 @@
     "random": "echo 'Random script'",
     "sso": "aws sso login --sso-session=opencode --no-browser",
     "test": "echo 'do not run tests from root' && exit 1",
-    "ui:diff": "bun scripts/ui-diff.ts"
+    "ui:diff": "bun scripts/ui-diff.ts",
+    "ui:capture-config": "bun scripts/ui-config-logs-capture.ts",
+    "ui:keys-config": "bun scripts/ui-config-logs-keys.ts"
   },
   "workspaces": {
     "packages": [
