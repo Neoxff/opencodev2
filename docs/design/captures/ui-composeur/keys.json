@@ -1,0 +1,13 @@
+{
+  "sessionID": "ses_e004e70e4ffeLfRBa2wwr507vN",
+  "prompts": 4,
+  "aborts": 2,
+  "firstText": "test clavier",
+  "queuedText": "test file",
+  "steerText": "test steer",
+  "steerMetadata": {
+    "steer": true
+  },
+  "sendClass": "send",
+  "status": "lean · Hy4 flash Free · low27.5k / 1.0M (3%)101 tok/s@ tag filesctrl+p commands"
+}

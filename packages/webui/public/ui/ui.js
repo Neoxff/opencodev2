@@ -1,7 +1,9 @@
 (function(){
 const DEMO = new URLSearchParams(location.search).has("demo");
+let composerApi=null,composerConfig=null,composerSelection=null,composerMetrics=null,composerTimer=null;
 const $=s=>document.querySelector(s);
 const ic=(n,c)=>'<svg class="i '+(c||'')+'"><use href="#'+n+'"/></svg>';
+const escText=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const panel=$('#panel'),col=$('#col'),scroll=$('#scroll'),ta=$('#ta'),dock=$('#dock'),app=$('#app');
 let running=false,tab='conv',sel=null,timers=[];
@@ -36,7 +38,7 @@ function hello(){const d=new Date(),h=d.getHours(),g=h<5?'Bonne nuit':h<12?'Bonj
   const J=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'],M=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   return g+' · '+J[d.getDay()]+' '+d.getDate()+' '+M[d.getMonth()];}
 function welcome(){
-  closeLiveStream();stopLogPolling();timers.forEach(clearInterval);timers=[];
+  closeLiveStream();stopLogPolling();stopComposerPolling();timers.forEach(clearInterval);timers=[];
   const m=MOTTOS[nextIndex()];let k=0;running=false;setRun();
   $('#welcome').innerHTML='<div class="hello">'+ic('spark','s st')+hello()+'</div><h2 class="motto">'+m[0].split(' ').map(w=>'<span class="w" style="--k:'+(k++)+'">'+w+'</span>').join(' ')+'</h2><div class="rule"></div><p class="sub">'+m[1]+'</p><div class="stamp"><span><kbd>/</kbd>commands</span><span><kbd>@</kbd>files</span><span><kbd>ctrl+p</kbd>palette</span></div>';
   $('#chips').innerHTML='<button class="chip" data-a="res">'+ic('clock','s')+'Resume · Correctif dépôt divergent</button><button class="chip" data-a="/humanizer ">'+ic('spark','s')+'<code>/humanizer</code></button><button class="chip" data-a="/mcps">'+ic('plug','s')+'<code>/mcps</code></button><button class="chip" data-a="@">'+ic('folder','s')+'<code>@</code> files</button>';
@@ -49,11 +51,18 @@ addEventListener('resize',setLift);
 
 /* ---------- Barre d'état sous le composeur (comme le CLI) ---------- */
 function status(){
+  if(!DEMO&&composerMetrics&&composerSelection){
+    const parts=composerApi.statusParts(composerMetrics,composerSelection);
+    const hints=(running?'<span><kbd>esc</kbd> interrupt</span><span><kbd>enter</kbd> queue</span>'+(canSteer?'<span><kbd>alt+s</kbd> steer</span>':'<span>steer indisponible</span>'):'')+'<span><b>'+escText(parts.agent)+'</b> · '+escText(parts.model)+' · '+escText(parts.variant)+'</span><span>'+escText(parts.tokens)+'</span>';
+    $('#status').innerHTML=hints+'<span class="sp"></span><span>'+(parts.tps?escText(parts.tps):'')+'</span><button id="stAt">@ tag files</button><button id="stPal">ctrl+p commands</button>';
+    $('#stPal').onclick=()=>openPalette('');$('#stAt').onclick=()=>{ta.focus();ta.value+=' @';renderMenu();};
+    return;
+  }
   const pct=Math.round(S.ctx/1000*100/1.0)/1;const p=Math.round(S.ctx/10)/1;
   $('#status').innerHTML=(running?'<span><kbd>esc</kbd> interrupt</span><span><kbd>enter</kbd> queue</span><span><kbd>alt+s</kbd> steer</span>':'<span><b>'+S.agent+'</b> · '+S.model+' · '+S.variant+'</span><span>'+S.ctx+'k / 1.0M ('+Math.round(S.ctx/10)+'%)</span>')+'<span class="sp"></span><span>'+(running?S.tps+' tok/s':'')+'</span><button id="stAt">@ tag files</button><button id="stPal">ctrl+p commands</button>';
   $('#stPal').onclick=()=>openPalette('');$('#stAt').onclick=()=>{ta.focus();ta.value+=' @';renderMenu();};
 }
-function setRun(){const s=$('#send');s.classList.toggle('run',running);$('#work').style.display=running?'flex':'none';}
+function setRun(){const s=$('#send');s.classList.toggle('run',running);s.setAttribute('aria-label',running?'Interrupt':'Send');$('#work').style.display=running?'flex':'none';}
 
 /* ---------- Barre latérale ---------- */
 const WS=DEMO?[
@@ -196,9 +205,13 @@ async function openRealSession(wi,si){
   try{
     const loaded=await dataApi.loadConversation(s.id);
     applyConversation(loaded);
+    if(composerApi){
+      const state=await composerApi.loadSessionState(s.id);
+      applyComposerSession(state);
+    }
   }catch(e){console.error(e);toast('Session indisponible');}
 }
-function openSession(wi,si){sel=[wi,si];panel.classList.remove('is-welcome');setLift();$('#title').textContent=WS[wi].s[si].t;$('#goalb').style.opacity=1;renderTree();switchTab('conv',true);if(!DEMO&&WS[wi].s[si].id)void openRealSession(wi,si);else loadThread(wi===2&&si===0);}
+function openSession(wi,si){stopComposerPolling();sel=[wi,si];panel.classList.remove('is-welcome');setLift();$('#title').textContent=WS[wi].s[si].t;$('#goalb').style.opacity=1;renderTree();switchTab('conv',true);if(!DEMO&&WS[wi].s[si].id)void openRealSession(wi,si);else loadThread(wi===2&&si===0);}
 
 /* ---------- Conversation (libellés d'origine en anglais) ---------- */
 let TS=0;const stamp=i=>{const s=12*3600+3*60+24+i*9;return String(Math.floor(s/3600)%24).padStart(2,'0')+':'+String(Math.floor(s/60)%60).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
@@ -316,15 +329,63 @@ $('#goalb').onclick=()=>{app.classList.add('rp');shut.goal=false;rp();};
 const AG=[['orchestrator','Coordonne les autres agents'],['plan','Lecture seule, enquête et plan'],['build','Écrit le code, une étape à la fois'],['designer','Documents de design'],['lean','Budgets et mesures'],['security','Audit et verdicts'],['product-manager','Critères et recette'],['release','Branches, PR, fusions']];
 const VA=[['max',''],['high',''],['medium',''],['low','']];
 const MO=[['Tidepool Alpha Free','OpenCode'],['Hy4 Flash Free','OpenCode'],['DeepSeek V4.1 Flash','OpenCode Go']];
-function setAgent(v){S.agent=v;$('#vA').textContent=v;pops();status();}
-function setVar(v){S.variant=v;$('#vV').textContent=v;pops();status();}
-function setModel(v){S.model=v;$('#vM').textContent=v;pops();status();}
+function setAgent(v){S.agent=v;if(!DEMO&&composerSelection)composerSelection={...composerSelection,agent:v};$('#vA').textContent=v;pops();status();}
+function setVar(v){S.variant=v;if(!DEMO&&composerSelection)composerSelection={...composerSelection,variant:v};$('#vV').textContent=v;pops();status();}
+function setModel(v){
+  S.model=v;$('#vM').textContent=v;
+  if(!DEMO&&composerConfig){
+    const model=composerConfig.models.find(m=>m.id===v);
+    const variants=composerApi.variantsFor(composerConfig.models,v);
+    VA.splice(0,VA.length,...variants.map(x=>[x,'']));
+    composerSelection={...composerSelection,modelID:v,providerID:model?.providerID||'',modelName:model?.name||v,variant:variants[0]||'default'};
+    if(composerMetrics&&model?.limit?.context){composerMetrics={...composerMetrics,limit:model.limit.context,percent:Math.round(composerMetrics.used/model.limit.context*100)};}
+    S.variant=composerSelection.variant;$('#vV').textContent=S.variant;
+  }
+  pops();status();
+}
 function fillPop(pop,list,cur,set){pop.innerHTML=list.map(x=>'<div class="mi" data-v="'+x[0]+'"><b>'+x[0]+'</b><span class="d">'+(x[1]||'')+'</span>'+(x[0]===cur?ic('check','s ck'):'')+'</div>').join('');
   pop.onclick=e=>{const it=e.target.closest('.mi');if(!it)return;e.stopPropagation();set(it.dataset.v);closePops();};}
 function pops(){fillPop($('#popA'),AG,S.agent,setAgent);fillPop($('#popV'),VA,S.variant,setVar);fillPop($('#popM'),MO,S.model,setModel);}
 function closePops(){document.querySelectorAll('.pop').forEach(p=>p.classList.remove('on'));document.querySelectorAll('.sel').forEach(s=>s.classList.remove('open'));}
 [['#selA','#popA'],['#selV','#popV'],['#selM','#popM']].forEach(([b,p])=>$(b).onclick=e=>{e.stopPropagation();const was=$(p).classList.contains('on');closePops();if(!was){$(p).classList.add('on');$(b).classList.add('open');}});
 document.addEventListener('click',closePops);pops();
+
+function applyComposerConfig(config){
+  if(DEMO||!config||!composerApi)return;
+  composerConfig=config;canSteer=!!config.canSteer;
+  AG.splice(0,AG.length,...config.agents.map(a=>[a.name,a.description]));
+  MO.splice(0,MO.length,...config.models.map(m=>[m.id,(m.name||m.id)+' · '+m.providerID]));
+  composerSelection=composerApi.selectionFromSession(config.models,config.agents,null);
+  S.agent=composerSelection.agent;S.variant=composerSelection.variant;S.model=composerSelection.modelID;S.ctx=0;S.tps=0;
+  $('#vA').textContent=S.agent;$('#vV').textContent=S.variant;$('#vM').textContent=S.model;
+  pops();status();
+}
+function findMaquetteSession(id){for(let wi=0;wi<WS.length;wi++){const si=WS[wi].s.findIndex(s=>s.id===id);if(si>=0)return[wi,si];}return null;}
+function stopComposerPolling(){if(composerTimer){clearInterval(composerTimer);composerTimer=null;}}
+function startComposerPolling(id){
+  stopComposerPolling();
+  composerTimer=setInterval(async()=>{
+    if(!composerApi||!composerConfig)return;
+    try{
+      const loaded=await composerApi.loadSessionState(id);
+      if(loaded.busy!==running){running=loaded.busy;liveRunning=loaded.busy;setRun();}
+      const model=composerConfig.models.find(m=>m.id===loaded.session?.model?.id)||composerConfig.models.find(m=>m.id===composerSelection?.modelID);
+      composerMetrics=composerApi.sessionMetrics(loaded.session,loaded.messages,model);
+      status();
+      if(!loaded.busy)stopComposerPolling();
+    }catch{}
+  },3000);
+}
+function applyComposerSession(loaded){
+  if(!composerConfig||!composerApi)return;
+  composerSelection=composerApi.selectionFromSession(composerConfig.models,composerConfig.agents,loaded.session);
+  const model=composerConfig.models.find(m=>m.id===composerSelection.modelID);
+  composerMetrics=composerApi.sessionMetrics(loaded.session,loaded.messages,model);
+  S.agent=composerSelection.agent;S.model=composerSelection.modelID;S.variant=composerSelection.variant;
+  $('#vA').textContent=S.agent;$('#vM').textContent=S.model;$('#vV').textContent=S.variant;
+  running=!!loaded.busy;setRun();pops();status();
+  if(running)startComposerPolling(currentSessionID);else stopComposerPolling();
+}
 
 /* ---------- LES COMMANDES : la liste complète du CLI ---------- */
 const CMD=[
@@ -424,7 +485,10 @@ ta.addEventListener('keydown',e=>{
     if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();const x=items[ai];if(x&&x.k){ta.value='';menu.classList.remove('on');runCmd(x,'');return;}pick(ai);return;}
     if(e.key==='Escape'){menu.classList.remove('on');return;}
   }
-  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();
+    if(!DEMO&&composerApi){const decision=composerApi.keyboardDecision(e,{running,canSteer});void submit(decision==='steer'?'steer':'send');}
+    else send();
+  }
 });
 $('#hint').onclick=()=>{ta.focus();ta.value='/';renderMenu();};
 
@@ -441,40 +505,57 @@ function openPalette(q){
 $('#pal').onclick=()=>openPalette('');
 
 /* ---------- Envoi (file d'attente si l'agent travaille) ---------- */
-function send(){
-  const v=ta.value.trim();if(running&&!v){if(!DEMO&&configApi)void realInterrupt();else{running=false;setRun();status();toast('Interrupted');}return;}
-  if(!v)return;ta.value='';menu.classList.remove('on');
-  const first=v.split(/\s+/)[0],c=CMD.find(x=>x.n===first);
-  if(c){runCmd(c,v.slice(first.length).trim());return;}
-  if(!DEMO&&configApi){void realSend(v,false);return;}
-  if(panel.classList.contains('is-welcome')){panel.classList.remove('is-welcome');setLift();$('#title').textContent=v.length>46?v.slice(0,46)+'…':v;$('#goalb').style.opacity=1;col.innerHTML='';}
-  if(tab!=='conv')switchTab('conv',true);
-  const me=document.createElement('div');me.className='me';me.textContent=v;if(running){const q=document.createElement('span');q.className='q';q.textContent='queued';me.append(q);}col.append(me);
-  setTimeout(()=>append(R.th({l:1,i:0,s:'4s',c:'812'})+R.p('Compris. Je lance l’étape et je te fais un rapport avec les preuves.',{l:1,i:1})),400);
-  scroll.scrollTop=1e6;sbar();
-}
-$('#send').onclick=()=>{if(running&&!ta.value.trim()){if(!DEMO&&configApi)void realInterrupt();else{running=false;setRun();status();toast('Interrupted');}}else send();};
-
 async function ensureCurrentSession(){
   if(currentSessionID)return currentSessionID;
   if(!dataApi)return null;
   try{
     const created=await dataApi.createSession();
     const workspaces=await dataApi.loadSidebarData();
-    WS.splice(0,WS.length,...workspaces);renderTree();
+    WS.splice(0,WS.length,...workspaces);disableArchived();renderTree();
+    const found=findMaquetteSession(created.id);
+    if(found)openSession(found[0],found[1]);
     currentSessionID=created.id;
+    $('#title').textContent=created.title||'New session';$('#goalb').style.opacity=1;
+    panel.classList.remove('is-welcome');setLift();
     return created.id;
   }catch(e){console.error(e);toast('Session indisponible');return null;}
 }
 async function realSend(v,steer){
   const sid=await ensureCurrentSession();if(!sid)return;
-  const payload=configApi?configApi.buildPromptPayload(v,steer?{steer:true}:{}):{parts:[{type:'text',text:v}]};
+  const payload=composerApi?composerApi.buildPromptPayload(v,composerSelection||{},steer?'steer':'send')
+    :configApi?configApi.buildPromptPayload(v,steer?{steer:true}:{})
+    :{parts:[{type:'text',text:v}]};
   if(panel.classList.contains('is-welcome')){panel.classList.remove('is-welcome');setLift();$('#goalb').style.opacity=1;col.innerHTML='';}
   if(tab!=='conv')switchTab('conv',true);
   try{
-    if(configApi)await configApi.sendPrompt(sid,payload);else await dataApi.sendPrompt(sid,v);
+    if(composerApi)await composerApi.sendPrompt(sid,payload);
+    else if(configApi)await configApi.sendPrompt(sid,payload);
+    else await dataApi.sendPrompt(sid,v);
     running=true;liveRunning=true;setRun();status();
+    if(composerApi)startComposerPolling(sid);
   }catch(e){console.error(e);toast('Envoi impossible');}
+}
+async function interruptAgent(){
+  if(!currentSessionID||(!composerApi&&!configApi)){
+    running=false;liveRunning=false;setRun();stopComposerPolling();status();toast('Interrupted');return;
+  }
+  try{
+    if(composerApi)await composerApi.abortSession(currentSessionID);
+    else await configApi.abortSession(currentSessionID);
+  }catch(e){console.error(e);toast('Interruption impossible');}
+  running=false;liveRunning=false;setRun();stopComposerPolling();status();toast('Interrupted');
+}
+async function realInterrupt(){await interruptAgent();}
+async function submit(mode='send'){
+  const v=ta.value.trim();if(!v)return;ta.value='';menu.classList.remove('on');
+  const first=v.split(/\s+/)[0],c=CMD.find(x=>x.n===first);
+  if(c){runCmd(c,v.slice(first.length).trim());return;}
+  await realSend(v,mode==='steer');
+}
+function send(){
+  const v=ta.value.trim();
+  if(running&&!v){if(!DEMO)void interruptAgent();else{running=false;setRun();status();toast('Interrupted');}return;}
+  void submit('send');
 }
 function confirmDelete(){
   if(!sel)return;
@@ -491,11 +572,6 @@ async function deleteSelected(){
     if(!DEMO&&configApi&&id)await configApi.deleteSession(id);
     WS[sel[0]].s.splice(sel[1],1);sel=null;renderTree();welcome();toast('Session supprimée');
   }catch(e){console.error(e);toast('Suppression impossible');}
-}
-async function realInterrupt(){
-  if(!currentSessionID||!configApi){running=false;setRun();status();toast('Interrupted');return;}
-  try{await configApi.abortSession(currentSessionID);}catch(e){console.error(e);toast('Interruption impossible');}
-  running=false;liveRunning=false;setRun();status();toast('Interrupted');
 }
 $('#newbtn').onclick=()=>H.new();
 $('#reopen').onclick=()=>{sel=null;renderTree();welcome();};
@@ -517,8 +593,12 @@ addEventListener('keydown',e=>{
   if(e.altKey&&e.key.toLowerCase()==='n'){e.preventDefault();H.new();return;}
   if(e.altKey&&e.key.toLowerCase()==='s'){e.preventDefault();toast('Steer : consigne injectée dans le tour en cours');return;}
   if((e.ctrlKey)&&e.key.toLowerCase()==='r'&&sel){e.preventDefault();H.rename();return;}
-  if((e.ctrlKey)&&e.key.toLowerCase()==='d'&&sel){e.preventDefault();const w=WS[sel[0]];w.s.splice(sel[1],1);sel=null;renderTree();welcome();toast('Session supprimée');return;}
-  if(e.key==='Escape'){if(ov.classList.contains('on'))closeDlg();else if(running&&!menu.classList.contains('on')){if(!DEMO&&configApi)void realInterrupt();else{running=false;setRun();status();toast('Interrupted');}}}
+  if(e.key==='Escape'){
+    if(ov.classList.contains('on'))closeDlg();
+    else if(running&&!menu.classList.contains('on')){
+      if(!DEMO)void interruptAgent();else{running=false;setRun();status();toast('Interrupted');}
+    }
+  }
 });
 
 /* ---------- Ciel étoilé : noir, discret, sans étoile filante ---------- */
@@ -538,11 +618,13 @@ if(innerWidth<1360)app.classList.remove('rp');
 async function bootData(){
   if(DEMO)return true;
   try{
-    dataApi=await import('/ui/data.js');
-    configApi=await import('/ui/config-logs.js');
+    const [data,composer,config]=await Promise.all([import('/ui/data.js'),import('/ui/composer.js'),import('/ui/config-logs.js')]);
+    dataApi=data;composerApi=composer;configApi=config;
     const caps=await configApi.loadCapabilities().catch(()=>({canSteer:false}));canSteer=!!caps.canSteer;
-    const workspaces=await dataApi.loadSidebarData();
+    const [workspaces,composerConfig]=await Promise.all([dataApi.loadSidebarData(),composerApi.loadComposerConfig()]);
     WS.splice(0,WS.length,...workspaces);
+    applyComposerConfig(composerConfig);
+    canSteer=canSteer||!!composerConfig?.canSteer;
     disableArchived();
     return true;
   }catch(e){console.error(e);toast('Données indisponibles');return false;}
