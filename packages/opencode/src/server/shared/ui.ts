@@ -55,7 +55,6 @@ function notFound() {
 
 const ADOPTED_CSS_MARKER = "<!--OPENCODEV2_UI_CSS-->"
 const ADOPTED_JS_MARKER = "<!--OPENCODEV2_UI_JS-->"
-const ADOPTED_UI_MODE = "demo"
 
 /** Ré-assemble la maquette découpée, sans toucher une seule octave de son HTML/CSS/JS. */
 export function assembleAdoptedUI(html: Uint8Array, css: Uint8Array, js: Uint8Array): Uint8Array {
@@ -75,16 +74,16 @@ function adoptedUIScriptHash(body: Uint8Array) {
 const adoptedCSP = (hash = "") =>
   `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'${hash ? ` 'sha256-${hash}'` : ""}; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; media-src 'self' data:; connect-src * data:`
 
-function adoptedUIResponse(body: Uint8Array) {
+function adoptedUIResponse(body: Uint8Array, demo: boolean) {
   const headers = new Headers({
     "content-type": "text/html; charset=utf-8",
     "content-security-policy": adoptedCSP(adoptedUIScriptHash(body)),
-    "x-opencodev2-ui-mode": ADOPTED_UI_MODE,
+    "x-opencodev2-ui-mode": demo ? "demo" : "data",
   })
   return HttpServerResponse.raw(body, { headers })
 }
 
-function serveAdoptedUIEffect(fs: AppFileSystem.Interface, dir: string) {
+function serveAdoptedUIEffect(fs: AppFileSystem.Interface, dir: string, demo: boolean) {
   return Effect.gen(function* () {
     const base = path.join(dir, "ui")
     const read = (name: string) =>
@@ -93,7 +92,7 @@ function serveAdoptedUIEffect(fs: AppFileSystem.Interface, dir: string) {
     const css = yield* read("ui.css")
     const js = yield* read("ui.js")
     if (!html || !css || !js) return notFound()
-    return adoptedUIResponse(assembleAdoptedUI(html, css, js))
+    return adoptedUIResponse(assembleAdoptedUI(html, css, js), demo)
   })
 }
 
@@ -160,9 +159,12 @@ function resolveWithinRoot(dir: string, requestPath: string): string | null {
  * route is not a missing file; and a request that escapes the root is answered with the same 404 as
  * a missing file, so the root cannot be probed.
  */
-export function serveDirectoryUIEffect(requestPath: string, fs: AppFileSystem.Interface, dir: string) {
+export function serveDirectoryUIEffect(requestPath: string, fs: AppFileSystem.Interface, dir: string, search = "") {
   return Effect.gen(function* () {
-    if (requestPath === "/ui" || requestPath === "/ui/") return yield* serveAdoptedUIEffect(fs, dir)
+    if (requestPath === "/ui" || requestPath === "/ui/") {
+      const demo = new URLSearchParams(search).has("demo")
+      return yield* serveAdoptedUIEffect(fs, dir, demo)
+    }
     const root = path.resolve(dir)
     const index = path.join(root, "index.html")
 
@@ -197,11 +199,12 @@ export function serveUIEffect(
   },
 ) {
   return Effect.gen(function* () {
-    const pathname = new URL(request.url, "http://localhost").pathname
+    const url = new URL(request.url, "http://localhost")
+    const pathname = url.pathname
 
     // An explicitly configured directory wins over both the embedded bundle and the proxy: it is
     // the operator's stated intent, and it is what makes a single command enough to run the web UI.
-    if (services.webUiDir) return yield* serveDirectoryUIEffect(pathname, services.fs, services.webUiDir)
+    if (services.webUiDir) return yield* serveDirectoryUIEffect(pathname, services.fs, services.webUiDir, url.search)
 
     const embeddedWebUI = yield* Effect.promise(() => embeddedUI(services.disableEmbeddedWebUi))
 

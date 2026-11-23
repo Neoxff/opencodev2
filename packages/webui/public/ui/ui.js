@@ -1,9 +1,12 @@
 (function(){
+const DEMO = new URLSearchParams(location.search).has("demo");
+let dataApi = null;
 const $=s=>document.querySelector(s);
 const ic=(n,c)=>'<svg class="i '+(c||'')+'"><use href="#'+n+'"/></svg>';
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const panel=$('#panel'),col=$('#col'),scroll=$('#scroll'),ta=$('#ta'),dock=$('#dock'),app=$('#app');
 let running=false,tab='conv',sel=null,timers=[];
+
 const S={agent:'orchestrator',variant:'max',model:'Tidepool Alpha Free',decision:'Tidepool Alpha Free',vision:'Hy4 Flash Free',ctx:634,tps:52};
 
 /* ---------- Petits utilitaires ---------- */
@@ -49,7 +52,7 @@ function status(){
 function setRun(){const s=$('#send');s.classList.toggle('run',running);$('#work').style.display=running?'flex':'none';}
 
 /* ---------- Barre latérale ---------- */
-const WS=[
+const WS=DEMO?[
  {n:'joachim',t:'14h',open:false,s:[],more:159},
  {n:'Music-player',t:'3d',open:false,s:[{t:'B-Music3, historique et lien',m:'17/11'},{t:'B-Music1, lecteur',m:'14/11'}]},
  {n:'opencodev2web',t:'5m',open:true,s:[
@@ -57,7 +60,7 @@ const WS=[
   {t:'Garde-fous mémoire du démon',m:'2h'},{t:'API Git locale, jeton',m:'4h'},{t:'Panneau Ressources',m:'1d'},
   {t:'Banc de mesure et budgets',m:'1d'},{t:'Lanceur Arch Linux',m:'3d'},{t:'Architecture opencodev2',m:'3d'}],more:30},
  {n:'traducteur-appinventor',t:'1d',open:false,s:[]}
-];
+]:[];
 const tree=$('#tree'),sf=$('#sfilter');
 function renderTree(){
   tree.innerHTML='';const q=sf.value.trim().toLowerCase();
@@ -77,10 +80,29 @@ function renderTree(){
     }
   });
 }
+function disableArchived(){
+  document.querySelectorAll('.fold').forEach(f=>{
+    if(!f.textContent.includes('Archived'))return;
+    f.title='bientôt';f.setAttribute('aria-disabled','true');
+    f.onclick=e=>{e.preventDefault();e.stopPropagation();toast('bientôt');};
+  });
+}
 sf.addEventListener('input',renderTree);
 $('#bSearch').onclick=()=>{sf.classList.toggle('on');if(sf.classList.contains('on'))sf.focus();else{sf.value='';renderTree();}};
 $('#bHist').onclick=()=>H.sessions();
-function openSession(wi,si){sel=[wi,si];panel.classList.remove('is-welcome');setLift();$('#title').textContent=WS[wi].s[si].t;$('#goalb').style.opacity=1;renderTree();switchTab('conv',true);loadThread(wi===2&&si===0);}
+async function openRealSession(wi,si){
+  const s=WS[wi]?.s[si];if(!s?.id||!dataApi)return;
+  try{
+    const {session,messages}=await dataApi.loadSession(s.id);
+    $('#title').textContent=session.title||s.t;
+    col.innerHTML='';
+    for(const m of messages){
+      const d=document.createElement('div');d.className=m.role==='user'?'me':'p';d.textContent=m.text;col.append(d);
+    }
+    sbar();
+  }catch(e){console.error(e);toast('Session indisponible');}
+}
+function openSession(wi,si){sel=[wi,si];panel.classList.remove('is-welcome');setLift();$('#title').textContent=WS[wi].s[si].t;$('#goalb').style.opacity=1;renderTree();switchTab('conv',true);if(!DEMO&&WS[wi].s[si].id)void openRealSession(wi,si);else loadThread(wi===2&&si===0);}
 
 /* ---------- Conversation (libellés d'origine en anglais) ---------- */
 let TS=0;const stamp=i=>{const s=12*3600+3*60+24+i*9;return String(Math.floor(s/3600)%24).padStart(2,'0')+':'+String(Math.floor(s/60)%60).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
@@ -124,6 +146,7 @@ function switchTab(t,silent){tab=t;document.querySelectorAll('.tab[data-t]').for
   if(silent)return;if(panel.classList.contains('is-welcome')){panel.classList.remove('is-welcome');setLift();}
   if(t==='logs')col.innerHTML='<div class="logline">'+['12:03:24 <i>info</i>  opencodev2 server listening on http://127.0.0.1:4097','12:03:25 <i>info</i>  daemon: autostart disabled','12:03:41 <i>mcp</i>   github connected (12 tools)','12:03:41 <i>mcp</i>   context7 connected (2 tools)','12:04:02 <i>git</i>   fetch origin: 2 commits behind','12:06:19 <i>skill</i> humanizer loaded','12:07:55 <i>agent</i> '+S.agent+' · '+S.model+' · 48.7s'].join('\n')+'</div>';
   else if(t==='config')col.innerHTML='<div class="cfgh"><span>opencodev2.config.json</span><span>read-only preview</span></div><div class="cfg">{\n  <b>"repo"</b>: "Neoxff/opencodev2",\n  <b>"branch"</b>: "main",\n  <b>"autoGit"</b>: <u>false</u>,\n  <b>"daemon"</b>: { <b>"autostart"</b>: <u>false</u> },\n  <b>"sky"</b>: "static",\n  <b>"glass"</b>: "off",\n  <b>"mcp"</b>: { <b>"max_sessions"</b>: 1 }\n}</div>';
+  else if(!DEMO&&sel&&WS[sel[0]]?.s[sel[1]]?.id)void openRealSession(sel[0],sel[1]);
   else loadThread(sel&&sel[0]===2&&sel[1]===0);
   sbar();}
 document.querySelectorAll('.tab[data-t]').forEach(b=>b.onclick=()=>switchTab(b.dataset.t));
@@ -208,7 +231,16 @@ const H={
    draw();$('#ml').onclick=e=>{const it=e.target.closest('.mi');if(!it)return;const m=MCPS[+it.dataset.k];m.on=!m.on;rp();const t=$('#dlg').scrollTop;draw();$('#dlg').scrollTop=t;$('#ml').onclick=arguments.callee;};
    },
  models:()=>openList('Switch model',MO,S.model,setModel),
- new:()=>{sel=null;renderTree();ta.value='';welcome();ta.focus();},
+ new:async()=>{
+  if(DEMO){sel=null;renderTree();ta.value='';welcome();ta.focus();return;}
+  if(!dataApi)return;
+  try{
+    const created=await dataApi.createSession();
+    const workspaces=await dataApi.loadSidebarData();
+    WS.splice(0,WS.length,...workspaces);renderTree();
+    for(let wi=0;wi<WS.length;wi++){const si=WS[wi].s.findIndex(s=>s.id===created.id);if(si>=0){openSession(wi,si);break;}}
+  }catch(e){console.error(e);toast('Création impossible');}
+},
  rename:()=>{openDlg('<h3>Rename session<kbd>Esc</kbd></h3><input class="in" id="rn" value="'+$('#title').textContent.replace(/"/g,'')+'"><div class="ga"><button class="gb" id="rok">Rename</button></div>');setTimeout(()=>$('#rn').select(),30);
    const ok=()=>{const v=$('#rn').value.trim();if(v&&sel){WS[sel[0]].s[sel[1]].t=v;$('#title').textContent=v;renderTree();}closeDlg();};$('#rok').onclick=ok;$('#rn').onkeydown=e=>{if(e.key==='Enter')ok();};},
  review:()=>append(R.del('Review uncommitted changes',{i:0,l:1,t:'12s'})+R.p('Revue terminée : <code>2</code> fichiers modifiés, aucun secret détecté, <code>1</code> remarque sur <code>git-panel.tsx</code>.',{l:1,i:1})),
@@ -310,5 +342,16 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){cancelAnim
 addEventListener('resize',size);size();start();
 
 if(innerWidth<1360)app.classList.remove('rp');
-renderTree();rp();welcome();
+async function bootData(){
+  if(DEMO)return true;
+  try{
+    dataApi=await import('/ui/data.js');
+    const workspaces=await dataApi.loadSidebarData();
+    WS.splice(0,WS.length,...workspaces);
+    disableArchived();
+    return true;
+  }catch(e){console.error(e);toast('Données indisponibles');return false;}
+}
+if(DEMO){renderTree();rp();welcome();}
+else void bootData().then(()=>{renderTree();rp();welcome();});
 })();
