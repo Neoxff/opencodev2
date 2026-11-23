@@ -55,6 +55,7 @@ function notFound() {
 
 const ADOPTED_CSS_MARKER = "<!--OPENCODEV2_UI_CSS-->"
 const ADOPTED_JS_MARKER = "<!--OPENCODEV2_UI_JS-->"
+const ADOPTED_UI_MODE = "demo"
 
 /** Ré-assemble la maquette découpée, sans toucher une seule octave de son HTML/CSS/JS. */
 export function assembleAdoptedUI(html: Uint8Array, css: Uint8Array, js: Uint8Array): Uint8Array {
@@ -78,6 +79,7 @@ function adoptedUIResponse(body: Uint8Array) {
   const headers = new Headers({
     "content-type": "text/html; charset=utf-8",
     "content-security-policy": adoptedCSP(adoptedUIScriptHash(body)),
+    "x-opencodev2-ui-mode": ADOPTED_UI_MODE,
   })
   return HttpServerResponse.raw(body, { headers })
 }

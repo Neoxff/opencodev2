@@ -31,4 +31,11 @@ describe("ui adoption — maquette découpée sans altération", () => {
     expect(body).toContain("--bg:#000")
     expect(body).not.toContain("shooting-star")
   })
+
+  test("les données de démonstration restent présentes par défaut", () => {
+    const body = reassemble()
+    expect(body).toContain("Correctif dépôt divergent")
+    expect(body).toContain("Tidepool Alpha Free")
+    expect(body).toContain("Resume · Correctif dépôt divergent")
+  })
 })
