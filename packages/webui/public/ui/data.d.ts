@@ -13,6 +13,18 @@ export interface MaquetteWorkspace {
   more: number
 }
 
+export interface LoadedConversation {
+  session: Record<string, unknown>
+  messages: unknown[]
+  diffs: unknown[]
+  status: unknown
+  busy: boolean
+  roles: Record<string, string>
+  queued: Record<string, boolean>
+  goal: import("./conversation.js").GoalView
+  lines: import("./conversation.js").ConversationLine[]
+}
+
 export function relativeTime(timestamp: number | undefined, maintenant?: number): string
 export function sessionActivityMap(statuses: unknown): Record<string, boolean>
 export function buildWorkspaces(
@@ -28,3 +40,7 @@ export function loadSession(
   sessionID: string,
   fetchImpl?: typeof fetch,
 ): Promise<{ session: unknown; messages: Array<{ role: string; text: string }> }>
+export function loadConversation(sessionID: string, fetchImpl?: typeof fetch): Promise<LoadedConversation>
+export function sendPrompt(sessionID: string, text: string, fetchImpl?: typeof fetch): Promise<{ ok: true }>
+
+export * from "./conversation.js"
