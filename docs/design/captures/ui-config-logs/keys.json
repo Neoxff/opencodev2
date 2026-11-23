@@ -1,0 +1,16 @@
+{
+  "paletteOpened": true,
+  "prompts": [
+    "premier message",
+    "second message",
+    "message steer"
+  ],
+  "steerMetadata": {
+    "steer": true
+  },
+  "aborts": 1,
+  "renamed": true,
+  "deleteConfirmed": true,
+  "deletes": 1,
+  "sendClass": "send"
+}
