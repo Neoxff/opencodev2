@@ -8,6 +8,10 @@
  * Sources : GET /project, GET /session, GET /session/status.
  */
 
+import { buildConversation, goalFromSession, queuedUserIDs } from "./conversation.js"
+
+export * from "./conversation.js"
+
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
@@ -155,4 +159,59 @@ export async function loadSession(sessionID, fetchImpl = fetch) {
       .map((message) => ({ role: message?.info?.role ?? "assistant", text: textOf(message) }))
       .filter((message) => message.text),
   }
+}
+
+async function getJsonOptional(fetchImpl, path, fallback) {
+  try {
+    return await getJson(fetchImpl, path)
+  } catch {
+    return fallback
+  }
+}
+
+/**
+ * Charge tout ce dont la conversation a besoin : session, messages, diff, statut
+ * et todos. Les lignes maquette sont déjà construites par `conversation.js`.
+ */
+export async function loadConversation(sessionID, fetchImpl = fetch) {
+  const enc = encodeURIComponent(sessionID)
+  const [session, messages, diffs, statuses, todos] = await Promise.all([
+    getJson(fetchImpl, `/session/${enc}`),
+    getJson(fetchImpl, `/session/${enc}/message`),
+    getJsonOptional(fetchImpl, `/session/${enc}/diff`, []),
+    getJsonOptional(fetchImpl, "/session/status", {}),
+    getJsonOptional(fetchImpl, `/session/${enc}/todo`, []),
+  ])
+  const messageList = Array.isArray(messages) ? messages : []
+  const status = statuses?.[sessionID]
+  const busy = Boolean(status && status.type !== "idle")
+  const roles = {}
+  for (const message of messageList) {
+    if (message?.info?.id && message?.info?.role) roles[message.info.id] = message.info.role
+  }
+  const queued = queuedUserIDs(messageList, busy)
+  const lines = buildConversation(messageList, diffs, { sessionID, roles, queued, busy })
+  return {
+    session,
+    messages: messageList,
+    diffs: Array.isArray(diffs) ? diffs : [],
+    status,
+    busy,
+    roles,
+    queued,
+    goal: goalFromSession(session, todos),
+    lines,
+  }
+}
+
+/** Envoie une vraie consigne ; le flux d'événements se chargera de l'afficher. */
+export async function sendPrompt(sessionID, text, fetchImpl = fetch) {
+  const response = await fetchImpl(`/session/${encodeURIComponent(sessionID)}/prompt_async`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ parts: [{ type: "text", text }] }),
+  })
+  if (!response.ok) throw new Error(`POST /session/${encodeURIComponent(sessionID)}/prompt_async -> HTTP ${response.status}`)
+  return { ok: true }
 }
