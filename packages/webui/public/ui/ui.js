@@ -5,7 +5,8 @@ const ic=(n,c)=>'<svg class="i '+(c||'')+'"><use href="#'+n+'"/></svg>';
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const panel=$('#panel'),col=$('#col'),scroll=$('#scroll'),ta=$('#ta'),dock=$('#dock'),app=$('#app');
 let running=false,tab='conv',sel=null,timers=[];
-let dataApi=null,currentSession=null,currentSessionID=null;
+let dataApi=null,configApi=null,currentSession=null,currentSessionID=null;
+let canSteer=false,configEditing=false,logTimer=null;
 let liveSource=null,liveSession=null,liveSeen=new Set(),liveIndex=0,liveMessages=[],liveRoles={},liveRunning=false;
 const lineIndexByKey=new Map();
 
@@ -35,7 +36,7 @@ function hello(){const d=new Date(),h=d.getHours(),g=h<5?'Bonne nuit':h<12?'Bonj
   const J=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'],M=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   return g+' · '+J[d.getDay()]+' '+d.getDate()+' '+M[d.getMonth()];}
 function welcome(){
-  closeLiveStream();timers.forEach(clearInterval);timers=[];
+  closeLiveStream();stopLogPolling();timers.forEach(clearInterval);timers=[];
   const m=MOTTOS[nextIndex()];let k=0;running=false;setRun();
   $('#welcome').innerHTML='<div class="hello">'+ic('spark','s st')+hello()+'</div><h2 class="motto">'+m[0].split(' ').map(w=>'<span class="w" style="--k:'+(k++)+'">'+w+'</span>').join(' ')+'</h2><div class="rule"></div><p class="sub">'+m[1]+'</p><div class="stamp"><span><kbd>/</kbd>commands</span><span><kbd>@</kbd>files</span><span><kbd>ctrl+p</kbd>palette</span></div>';
   $('#chips').innerHTML='<button class="chip" data-a="res">'+ic('clock','s')+'Resume · Correctif dépôt divergent</button><button class="chip" data-a="/humanizer ">'+ic('spark','s')+'<code>/humanizer</code></button><button class="chip" data-a="/mcps">'+ic('plug','s')+'<code>/mcps</code></button><button class="chip" data-a="@">'+ic('folder','s')+'<code>@</code> files</button>';
@@ -191,6 +192,7 @@ function applyConversation(loaded){
 }
 async function openRealSession(wi,si){
   const s=WS[wi]?.s[si];if(!s?.id||!dataApi)return;
+  currentSessionID=s.id;
   try{
     const loaded=await dataApi.loadConversation(s.id);
     applyConversation(loaded);
@@ -242,13 +244,49 @@ function append(html){col.insertAdjacentHTML('beforeend',html);scroll.scrollTop=
 
 /* ---------- Onglets Conversation / Config / Logs ---------- */
 function switchTab(t,silent){tab=t;document.querySelectorAll('.tab[data-t]').forEach(x=>x.classList.toggle('on',x.dataset.t===t));
+  stopLogPolling();configEditing=false;
   if(silent)return;if(panel.classList.contains('is-welcome')){panel.classList.remove('is-welcome');setLift();}
-  if(t==='logs')col.innerHTML='<div class="logline">'+['12:03:24 <i>info</i>  opencodev2 server listening on http://127.0.0.1:4097','12:03:25 <i>info</i>  daemon: autostart disabled','12:03:41 <i>mcp</i>   github connected (12 tools)','12:03:41 <i>mcp</i>   context7 connected (2 tools)','12:04:02 <i>git</i>   fetch origin: 2 commits behind','12:06:19 <i>skill</i> humanizer loaded','12:07:55 <i>agent</i> '+S.agent+' · '+S.model+' · 48.7s'].join('\n')+'</div>';
-  else if(t==='config')col.innerHTML='<div class="cfgh"><span>opencodev2.config.json</span><span>read-only preview</span></div><div class="cfg">{\n  <b>"repo"</b>: "Neoxff/opencodev2",\n  <b>"branch"</b>: "main",\n  <b>"autoGit"</b>: <u>false</u>,\n  <b>"daemon"</b>: { <b>"autostart"</b>: <u>false</u> },\n  <b>"sky"</b>: "static",\n  <b>"glass"</b>: "off",\n  <b>"mcp"</b>: { <b>"max_sessions"</b>: 1 }\n}</div>';
+  if(t==='logs'){
+    if(!DEMO&&configApi)void renderRealLogs();
+    else col.innerHTML='<div class="logline">'+['12:03:24 <i>info</i>  opencodev2 server listening on http://127.0.0.1:4097','12:03:25 <i>info</i>  daemon: autostart disabled','12:03:41 <i>mcp</i>   github connected (12 tools)','12:03:41 <i>mcp</i>   context7 connected (2 tools)','12:04:02 <i>git</i>   fetch origin: 2 commits behind','12:06:19 <i>skill</i> humanizer loaded','12:07:55 <i>agent</i> '+S.agent+' · '+S.model+' · 48.7s'].join('\n')+'</div>';
+  }
+  else if(t==='config'){
+    if(!DEMO&&configApi)void renderRealConfig();
+    else col.innerHTML='<div class="cfgh"><span>opencodev2.config.json</span><span>read-only preview</span></div><div class="cfg">{\n  <b>"repo"</b>: "Neoxff/opencodev2",\n  <b>"branch"</b>: "main",\n  <b>"autoGit"</b>: <u>false</u>,\n  <b>"daemon"</b>: { <b>"autostart"</b>: <u>false</u> },\n  <b>"sky"</b>: "static",\n  <b>"glass"</b>: "off",\n  <b>"mcp"</b>: { <b>"max_sessions"</b>: 1 }\n}</div>';
+  }
   else if(!DEMO&&sel&&WS[sel[0]]?.s[sel[1]]?.id)void openRealSession(sel[0],sel[1]);
   else loadThread(sel&&sel[0]===2&&sel[1]===0);
   sbar();}
 document.querySelectorAll('.tab[data-t]').forEach(b=>b.onclick=()=>switchTab(b.dataset.t));
+
+function stopLogPolling(){if(logTimer){clearInterval(logTimer);logTimer=null;}}
+function escHtml(v){return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+async function renderRealConfig(){
+  col.innerHTML='<div class="cfgh"><span>opencodev2.config.json</span><span>read-only preview</span></div><div class="cfg" id="cfgEdit" contenteditable="plaintext-only" spellcheck="false"></div>';
+  try{
+    const config=await configApi.loadConfig();const el=$('#cfgEdit');if(!el||tab!=='config')return;
+    el.textContent=configApi.configToJson(config);configEditing=true;
+    el.addEventListener('blur',()=>{void saveConfigFromEditor();});
+  }catch(e){console.error(e);toast('Config indisponible');}
+}
+async function saveConfigFromEditor(){
+  const el=$('#cfgEdit');if(!el||!configApi||DEMO)return;
+  const checked=configApi.validateConfigPatch(el.textContent||'');
+  if(!checked.ok){toast(checked.error||'Configuration invalide');return;}
+  try{await configApi.updateConfig(checked.value);toast('Config enregistrée');}
+  catch(e){console.error(e);toast('Enregistrement impossible');}
+}
+async function renderRealLogs(){
+  col.innerHTML='<div class="logline" id="logView">Chargement…</div>';
+  const draw=async()=>{
+    if(tab!=='logs')return;
+    try{
+      const lines=currentSessionID?await configApi.loadSessionLog(currentSessionID):configApi.formatLogLines([],{},'local');
+      const el=$('#logView');if(el)el.textContent=lines.join('\n');
+    }catch(e){const el=$('#logView');if(el)el.textContent='Journal indisponible';}
+  };
+  await draw();stopLogPolling();logTimer=setInterval(()=>{void draw();},3000);
+}
 
 /* ---------- Panneau droit : Goal, Context, MCP, LSP, Todo ---------- */
 const GOAL={st:'pending',dod:['Six états du panneau Dépôt testés','Aucun nouveau test en échec','Fond noir pur partout','Verre limité à 2 surfaces','Rapport avec preuves'],oos:['Thème clair','Rust pour le ciel','Synchronisation automatique amont','Rendu markdown en Rust']};
@@ -335,13 +373,14 @@ const H={
   if(!dataApi)return;
   try{
     const created=await dataApi.createSession();
+    currentSessionID=created.id;
     const workspaces=await dataApi.loadSidebarData();
     WS.splice(0,WS.length,...workspaces);renderTree();
     for(let wi=0;wi<WS.length;wi++){const si=WS[wi].s.findIndex(s=>s.id===created.id);if(si>=0){openSession(wi,si);break;}}
   }catch(e){console.error(e);toast('Création impossible');}
 },
- rename:()=>{openDlg('<h3>Rename session<kbd>Esc</kbd></h3><input class="in" id="rn" value="'+$('#title').textContent.replace(/"/g,'')+'"><div class="ga"><button class="gb" id="rok">Rename</button></div>');setTimeout(()=>$('#rn').select(),30);
-   const ok=()=>{const v=$('#rn').value.trim();if(v&&sel){WS[sel[0]].s[sel[1]].t=v;$('#title').textContent=v;renderTree();}closeDlg();};$('#rok').onclick=ok;$('#rn').onkeydown=e=>{if(e.key==='Enter')ok();};},
+  rename:()=>{openDlg('<h3>Rename session<kbd>Esc</kbd></h3><input class="in" id="rn" value="'+escHtml($('#title').textContent)+'"><div class="ga"><button class="gb" id="rok">Rename</button></div>');setTimeout(()=>$('#rn').select(),30);
+    const ok=async()=>{const v=$('#rn').value.trim();if(v&&sel){try{if(!DEMO&&configApi&&WS[sel[0]]?.s[sel[1]]?.id)await configApi.renameSession(WS[sel[0]].s[sel[1]].id,v);WS[sel[0]].s[sel[1]].t=v;$('#title').textContent=v;renderTree();toast('Renamed');}catch(e){console.error(e);toast('Renommage impossible');}}closeDlg();};$('#rok').onclick=()=>{void ok();};$('#rn').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();void ok();}};},
  review:()=>append(R.del('Review uncommitted changes',{i:0,l:1,t:'12s'})+R.p('Revue terminée : <code>2</code> fichiers modifiés, aucun secret détecté, <code>1</code> remarque sur <code>git-panel.tsx</code>.',{l:1,i:1})),
  sessions:()=>{const all=[];WS.forEach((w,wi)=>w.s.forEach((s,si)=>all.push([s.t,w.n+' · '+s.m,wi,si])));openList('Switch session',all.map(x=>[x[0],x[1]]),$('#title').textContent,n=>{const x=all.find(y=>y[0]===n);openSession(x[2],x[3]);});},
  share:()=>toast('Lien de partage local copié (simulé)'),
@@ -403,35 +442,83 @@ $('#pal').onclick=()=>openPalette('');
 
 /* ---------- Envoi (file d'attente si l'agent travaille) ---------- */
 function send(){
-  const v=ta.value.trim();if(running&&!v){running=false;setRun();status();toast('Interrupted');return;}
+  const v=ta.value.trim();if(running&&!v){if(!DEMO&&configApi)void realInterrupt();else{running=false;setRun();status();toast('Interrupted');}return;}
   if(!v)return;ta.value='';menu.classList.remove('on');
   const first=v.split(/\s+/)[0],c=CMD.find(x=>x.n===first);
   if(c){runCmd(c,v.slice(first.length).trim());return;}
-  if(!DEMO){
-    if(!currentSessionID){toast('Ouvre ou crée une session');return;}
-    void dataApi.sendPrompt(currentSessionID,v).then(()=>{
-      running=true;liveRunning=true;setRun();status();
-    }).catch(e=>{console.error(e);toast('Envoi impossible');});
-    return;
-  }
+  if(!DEMO&&configApi){void realSend(v,false);return;}
   if(panel.classList.contains('is-welcome')){panel.classList.remove('is-welcome');setLift();$('#title').textContent=v.length>46?v.slice(0,46)+'…':v;$('#goalb').style.opacity=1;col.innerHTML='';}
   if(tab!=='conv')switchTab('conv',true);
   const me=document.createElement('div');me.className='me';me.textContent=v;if(running){const q=document.createElement('span');q.className='q';q.textContent='queued';me.append(q);}col.append(me);
   setTimeout(()=>append(R.th({l:1,i:0,s:'4s',c:'812'})+R.p('Compris. Je lance l’étape et je te fais un rapport avec les preuves.',{l:1,i:1})),400);
   scroll.scrollTop=1e6;sbar();
 }
-$('#send').onclick=()=>{if(running&&!ta.value.trim()){running=false;setRun();status();toast('Interrupted');}else send();};
+$('#send').onclick=()=>{if(running&&!ta.value.trim()){if(!DEMO&&configApi)void realInterrupt();else{running=false;setRun();status();toast('Interrupted');}}else send();};
+
+async function ensureCurrentSession(){
+  if(currentSessionID)return currentSessionID;
+  if(!dataApi)return null;
+  try{
+    const created=await dataApi.createSession();
+    const workspaces=await dataApi.loadSidebarData();
+    WS.splice(0,WS.length,...workspaces);renderTree();
+    currentSessionID=created.id;
+    return created.id;
+  }catch(e){console.error(e);toast('Session indisponible');return null;}
+}
+async function realSend(v,steer){
+  const sid=await ensureCurrentSession();if(!sid)return;
+  const payload=configApi?configApi.buildPromptPayload(v,steer?{steer:true}:{}):{parts:[{type:'text',text:v}]};
+  if(panel.classList.contains('is-welcome')){panel.classList.remove('is-welcome');setLift();$('#goalb').style.opacity=1;col.innerHTML='';}
+  if(tab!=='conv')switchTab('conv',true);
+  try{
+    if(configApi)await configApi.sendPrompt(sid,payload);else await dataApi.sendPrompt(sid,v);
+    running=true;liveRunning=true;setRun();status();
+  }catch(e){console.error(e);toast('Envoi impossible');}
+}
+function confirmDelete(){
+  if(!sel)return;
+  const name=WS[sel[0]]?.s[sel[1]]?.t||'';
+  openDlg('<h3>Delete session<kbd>Esc</kbd></h3><p>Supprimer « '+escHtml(name)+' » ?</p><div class="ga"><button class="gb" id="dno">Cancel</button><button class="gb" id="dyes">Delete</button></div>');
+  $('#dno').onclick=closeDlg;
+  $('#dyes').onclick=()=>{void deleteSelected();};
+}
+async function deleteSelected(){
+  if(!sel)return;
+  const id=WS[sel[0]]?.s[sel[1]]?.id;
+  closeDlg();
+  try{
+    if(!DEMO&&configApi&&id)await configApi.deleteSession(id);
+    WS[sel[0]].s.splice(sel[1],1);sel=null;renderTree();welcome();toast('Session supprimée');
+  }catch(e){console.error(e);toast('Suppression impossible');}
+}
+async function realInterrupt(){
+  if(!currentSessionID||!configApi){running=false;setRun();status();toast('Interrupted');return;}
+  try{await configApi.abortSession(currentSessionID);}catch(e){console.error(e);toast('Interruption impossible');}
+  running=false;liveRunning=false;setRun();status();toast('Interrupted');
+}
 $('#newbtn').onclick=()=>H.new();
 $('#reopen').onclick=()=>{sel=null;renderTree();welcome();};
 
 /* ---------- Raccourcis clavier ---------- */
 addEventListener('keydown',e=>{
+  if(!DEMO&&configApi){
+    const d=configApi.keyboardDecision(e,{running,canSteer,hasSelection:!!sel,configEditing:tab==='config'});
+    if(d==='palette'){e.preventDefault();openPalette('');return;}
+    if(d==='new'){e.preventDefault();void H.new();return;}
+    if(d==='save-config'){e.preventDefault();void saveConfigFromEditor();return;}
+    if(d==='rename'){e.preventDefault();H.rename();return;}
+    if(d==='delete'){e.preventDefault();confirmDelete();return;}
+    if(d==='interrupt'){e.preventDefault();void realInterrupt();return;}
+    if(d==='steer'){e.preventDefault();const v=ta.value.trim();if(v){ta.value='';void realSend(v,true);}else toast('Steer nécessite un message');return;}
+    if(d==='unsupported'){e.preventDefault();toast('Steer indisponible');return;}
+  }
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='p'){e.preventDefault();openPalette('');return;}
   if(e.altKey&&e.key.toLowerCase()==='n'){e.preventDefault();H.new();return;}
   if(e.altKey&&e.key.toLowerCase()==='s'){e.preventDefault();toast('Steer : consigne injectée dans le tour en cours');return;}
   if((e.ctrlKey)&&e.key.toLowerCase()==='r'&&sel){e.preventDefault();H.rename();return;}
   if((e.ctrlKey)&&e.key.toLowerCase()==='d'&&sel){e.preventDefault();const w=WS[sel[0]];w.s.splice(sel[1],1);sel=null;renderTree();welcome();toast('Session supprimée');return;}
-  if(e.key==='Escape'){if(ov.classList.contains('on'))closeDlg();else if(running&&!menu.classList.contains('on')){running=false;setRun();status();toast('Interrupted');}}
+  if(e.key==='Escape'){if(ov.classList.contains('on'))closeDlg();else if(running&&!menu.classList.contains('on')){if(!DEMO&&configApi)void realInterrupt();else{running=false;setRun();status();toast('Interrupted');}}}
 });
 
 /* ---------- Ciel étoilé : noir, discret, sans étoile filante ---------- */
@@ -452,6 +539,8 @@ async function bootData(){
   if(DEMO)return true;
   try{
     dataApi=await import('/ui/data.js');
+    configApi=await import('/ui/config-logs.js');
+    const caps=await configApi.loadCapabilities().catch(()=>({canSteer:false}));canSteer=!!caps.canSteer;
     const workspaces=await dataApi.loadSidebarData();
     WS.splice(0,WS.length,...workspaces);
     disableArchived();
