@@ -77,5 +77,7 @@ export default defineConfig(({ mode }) => ({
   test: {
     environment: "jsdom",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    // Le moteur ciel est déterministe mais peut dépasser 5 s sous charge sur cette machine.
+    testTimeout: 15000,
   },
 }))
