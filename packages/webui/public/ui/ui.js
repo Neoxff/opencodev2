@@ -11,6 +11,7 @@ let dataApi=null,configApi=null,currentSession=null,currentSessionID=null;
 let canSteer=false,configEditing=false,logTimer=null;
 let liveSource=null,liveSession=null,liveSeen=new Set(),liveIndex=0,liveMessages=[],liveRoles={},liveRunning=false;
 const lineIndexByKey=new Map();
+let sessionCommandsApi=null,commandChoices=[],activityLog=[];
 
 const S={agent:'orchestrator',variant:'max',model:'Tidepool Alpha Free',decision:'Tidepool Alpha Free',vision:'Hy4 Flash Free',ctx:634,tps:52};
 
@@ -456,12 +457,101 @@ const H={
  variants:()=>openList('Switch model variant',VA,S.variant,setVar),
  'vision-model':()=>openList('Vision model (image fallback)',MO,S.vision,v=>{S.vision=v;toast('Vision model : '+v);})
 };
+/* ---------- Commandes de session réelles (hors DEMO) ---------- */
+function sessionSelection(){
+  const s=composerSelection||{};
+  return {providerID:s.providerID,modelID:s.modelID,agent:s.agent,variant:s.variant};
+}
+function activityTextSafe(a){return a.arguments?(a.name+' · '+a.arguments):a.name;}
+function activityRow(a){
+  return '<div class="row" data-activity-id="'+escHtml(a.id)+'" data-kind="'+escHtml(a.kind)+'" data-status="'+escHtml(a.status)+'" style="--i:'+activityLog.length+'"><span class="ico">'+ic(a.kind==='skill'?'spark':'plug','s')+'</span><span class="vb">'+a.kind+'</span><span class="nm">'+escHtml(activityTextSafe(a))+'</span><span class="rt"><span class="cmd-status">'+escHtml(a.status)+'</span></span></div>';
+}
+function replayActivities(){if(activityLog.length)col.insertAdjacentHTML('beforeend',activityLog.map(activityRow).join(''));}
+async function refreshSidebar(){
+  if(!dataApi)return;
+  const workspaces=await dataApi.loadSidebarData();
+  WS.splice(0,WS.length,...workspaces);disableArchived();renderTree();
+}
+function makeSessionHost(){
+  return {
+    origin:location.origin,
+    pathname:location.pathname,
+    clipboard:async text=>{
+      try{await navigator.clipboard.writeText(text);return true;}
+      catch(e){
+        try{
+          const t=document.createElement('textarea');t.value=text;t.style.position='fixed';t.style.opacity='0';
+          document.body.appendChild(t);t.select();const ok=document.execCommand('copy');t.remove();return !!ok;
+        }catch(_){return false;}
+      }
+    },
+    download:(filename,content)=>{
+      const blob=new Blob([content],{type:'text/markdown;charset=utf-8'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;
+      document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    },
+    notice:m=>toast(m),
+    error:m=>toast(m),
+    selectSession:async id=>{
+      await refreshSidebar();currentSessionID=id;
+      const found=findMaquetteSession(id);
+      if(found)openSession(found[0],found[1]);else{sel=null;renderTree();}
+    },
+    reload:async()=>{
+      if(sel)await openRealSession(sel[0],sel[1]);
+      else if(currentSessionID){
+        await refreshSidebar();const found=findMaquetteSession(currentSessionID);
+        if(found)await openRealSession(found[0],found[1]);
+      }
+      replayActivities();
+    },
+    clearSession:()=>{currentSessionID=null;currentSession=null;sel=null;activityLog=[];renderTree();welcome();ta.value='';ta.focus();},
+    rename:()=>H.rename(),
+    openEditor:()=>{
+      openDlg('<h3>Editor<kbd>Esc</kbd></h3><p>Éditeur intégré — aucun shell.</p><textarea class="in" id="ed" rows="10">'+escHtml(ta.value)+'</textarea><div class="ga"><button class="gb" id="edno">Cancel</button><button class="gb" id="edok">Save</button></div>');
+      const save=()=>{ta.value=$('#ed').value;closeDlg();ta.focus();renderMenu();};
+      $('#edno').onclick=closeDlg;$('#edok').onclick=save;
+      setTimeout(()=>$('#ed').focus(),30);
+    },
+    confirm:(message,options={})=>new Promise(resolve=>{
+      const onKey=e=>{if(e.key==='Escape')done(false);};
+      const onOv=e=>{if(e.target===ov)done(false);};
+      const done=v=>{removeEventListener('keydown',onKey);ov.removeEventListener('mousedown',onOv);closeDlg();resolve(v);};
+      addEventListener('keydown',onKey);ov.addEventListener('mousedown',onOv);
+      const title=escHtml(options.title||'Exit OpenCodev2?');
+      const accept=escHtml(options.acceptLabel||'Exit');
+      openDlg('<h3>'+title+'</h3><p>'+escHtml(message)+'</p><div class="ga"><button class="gb" id="cfno">Cancel</button><button class="gb" id="cfyes">'+accept+'</button></div>');
+      $('#cfno').onclick=()=>done(false);$('#cfyes').onclick=()=>done(true);
+    }),
+    addActivity:a=>{activityLog.push(a);append(activityRow(a));},
+    updateActivity:(id,status)=>{
+      const a=activityLog.find(x=>x.id===id);if(a)a.status=status;
+      const el=col.querySelector('[data-activity-id="'+CSS.escape(id)+'"]');
+      if(el){el.dataset.status=status;const s=el.querySelector('.cmd-status');if(s)s.textContent=status;}
+    },
+  };
+}
+async function runRealSessionCommand(text){
+  if(!sessionCommandsApi){toast('Commandes indisponibles');return;}
+  const ctx={
+    sessionID:currentSessionID||WS[sel?.[0]]?.s[sel?.[1]]?.id,
+    choices:commandChoices,
+    transport:sessionCommandsApi.createTransport(fetch,sessionSelection()),
+    host:makeSessionHost(),
+  };
+  await sessionCommandsApi.runCommandLine(text,ctx);
+}
 function skillOrMcp(c,args){const t=c.tag;const i={i:0,l:1,t:'0.4s'};
   if(t==='skill')append(R.sk(c.k,i)+R.p('Skill <code>'+c.k+'</code> chargé'+(args?' avec « '+args+' »':'')+'. Je l’applique et je te rends le résultat.',{l:1,i:1}));
   else append(R.mcp(c.k+(args?' · '+args:''),{i:0,l:1,t:'212ms'})+R.p('Prompt MCP <code>'+c.k+'</code> exécuté. Résultat ajouté au contexte.',{l:1,i:1}));}
 function runCmd(c,args){
   if(panel.classList.contains('is-welcome')&&(c.tag||['compact','init','review','undo','thinking','timestamps'].includes(c.k))){panel.classList.remove('is-welcome');setLift();$('#title').textContent='New session';$('#goalb').style.opacity=1;col.innerHTML='';}
-  if(c.tag)return skillOrMcp(c,args);const f=H[c.k];if(f)f(args);}
+  if(c.tag){
+    if(!DEMO&&sessionCommandsApi){void runRealSessionCommand('/'+c.k+(args?' '+args:''));return;}
+    return skillOrMcp(c,args);
+  }
+  if(!DEMO&&sessionCommandsApi&&sessionCommandsApi.isSessionCommand(c.k)){void runRealSessionCommand('/'+c.k+(args?' '+args:''));return;}
+  const f=H[c.k];if(f)f(args);}
 
 /* ---------- Menu slash (liste complète, défilante) ---------- */
 const AT=[['@packages/webui/src/app.tsx','file'],['@packages/webui/src/git-panel.tsx','file'],['@docs/design/20-ciel-etoile.md','file'],['@Ciel étoilé, Worker et canvas','session · 33m']];
@@ -618,9 +708,10 @@ if(innerWidth<1360)app.classList.remove('rp');
 async function bootData(){
   if(DEMO)return true;
   try{
-    const [data,composer,config]=await Promise.all([import('/ui/data.js'),import('/ui/composer.js'),import('/ui/config-logs.js')]);
-    dataApi=data;composerApi=composer;configApi=config;
+    const [data,composer,config,sessionCommands]=await Promise.all([import('/ui/data.js'),import('/ui/composer.js'),import('/ui/config-logs.js'),import('/ui/session-commands.js')]);
+    dataApi=data;composerApi=composer;configApi=config;sessionCommandsApi=sessionCommands;
     const caps=await configApi.loadCapabilities().catch(()=>({canSteer:false}));canSteer=!!caps.canSteer;
+    commandChoices=await sessionCommandsApi.loadChoices(fetch).catch(()=>[]);
     const [workspaces,composerConfig]=await Promise.all([dataApi.loadSidebarData(),composerApi.loadComposerConfig()]);
     WS.splice(0,WS.length,...workspaces);
     applyComposerConfig(composerConfig);
