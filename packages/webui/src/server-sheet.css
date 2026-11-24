@@ -1,0 +1,64 @@
+/**
+ * CSS isolé du conteneur « Server ». Fond noir pur (#000), aucun verre, aucune animation.
+ * Ajout uniquement : aucune classe ni valeur des feuilles existantes n'est modifiée.
+ */
+
+.server-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: 0.86;
+  z-index: 20;
+}
+
+.server-sheet {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(980px, calc(100vw - 48px));
+  max-height: min(84vh, 900px);
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  border: 1px solid #222;
+  border-radius: 14px;
+  z-index: 21;
+  overflow: auto;
+}
+
+.server-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid #111;
+}
+
+.server-sheet-title {
+  font-weight: 600;
+}
+
+.server-sheet-close {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  min-width: 44px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.server-sheet-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 16px 18px 20px;
+}
+
+@media (max-width: 900px) {
+  .server-sheet-body {
+    grid-template-columns: 1fr;
+  }
+}
