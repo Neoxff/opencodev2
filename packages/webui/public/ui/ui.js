@@ -1,6 +1,7 @@
 (function(){
 const DEMO = new URLSearchParams(location.search).has("demo");
 let composerApi=null,composerConfig=null,composerSelection=null,composerMetrics=null,composerTimer=null;
+let interfaceApi=null;
 const $=s=>document.querySelector(s);
 const ic=(n,c)=>'<svg class="i '+(c||'')+'"><use href="#'+n+'"/></svg>';
 const escText=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -405,14 +406,157 @@ const CMD=[
 ['vision-model','Set image fallback (vision) model']
 ].map(x=>({n:'/'+x[0],k:x[0],d:x[1],tag:x[2]||''}));
 const lst=a=>a.map(x=>[x,'']);
+
+/* ---------- Commandes réelles (hors DEMO) : mêmes dialogues, données du serveur ---------- */
+const realFail=label=>toast(label+' indisponible');
+function openRealList(title,rows,current,pick,mono){
+  const byLabel=new Map();
+  const items=rows.map(r=>{const label=String(r.label??r.value);byLabel.set(label,r.value);return [label,String(r.detail??'')];});
+  const cur=rows.find(r=>r.value===current);const curLabel=cur?String(cur.label??cur.value):current;
+  openList(title,items,curLabel,label=>{const v=byLabel.get(String(label));if(v!==undefined)pick(String(v));},mono);
+}
+const krows=pairs=>pairs.map(x=>'<div class="krow"><span>'+escText(x[0])+'</span><b style="font-weight:500;color:var(--tx)">'+escText(x[1])+'</b></div>').join('');
+async function realAgents(){
+  if(!interfaceApi)return;
+  try{openRealList('Switch agent',await interfaceApi.loadAgents(fetch),S.agent,setAgent);}catch(e){console.error(e);realFail('Agents');}
+}
+async function realModels(){
+  if(!interfaceApi)return;
+  try{openRealList('Switch model',await interfaceApi.loadModels(fetch),S.model,setModel);}catch(e){console.error(e);realFail('Modèles');}
+}
+async function realVariants(){
+  if(!interfaceApi)return;
+  try{openRealList('Switch model variant',await interfaceApi.loadVariants(S.model,fetch),S.variant,setVar);}catch(e){console.error(e);realFail('Variantes');}
+}
+async function realDecisionModels(){
+  if(!interfaceApi)return;
+  try{
+    const [loaded,models]=await Promise.all([interfaceApi.loadDecisionModels(fetch),interfaceApi.loadModels(fetch)]);
+    const rows=models.map(r=>({...r,current:r.value===loaded.current})).concat(interfaceApi.decisionRows(loaded.catalog));
+    openRealList('Decision model',rows,loaded.current,v=>{
+      if(String(v).startsWith('jev:')){toast('Modèle Jev : lecture seule (écriture sûre limitée à jev.decision_model)');return;}
+      void (async()=>{try{await interfaceApi.writeDecisionModel(String(v),fetch);S.decision=String(v);toast('Decision model enregistré : '+v);}catch(e){console.error(e);realFail('Enregistrement decision model');}})();
+    });
+  }catch(e){console.error(e);realFail('Decision models');}
+}
+async function realVisionModels(){
+  if(!interfaceApi)return;
+  try{
+    const loaded=await interfaceApi.loadVisionModels(fetch);
+    openRealList('Vision model (image fallback)',loaded.rows.map(r=>({...r,current:r.value===loaded.current})),loaded.current,v=>{
+      void (async()=>{try{await interfaceApi.writeVisionModel(String(v),fetch);S.vision=String(v);toast('Vision model enregistré : '+v);}catch(e){console.error(e);realFail('Enregistrement vision model');}})();
+    });
+  }catch(e){console.error(e);realFail('Vision models');}
+}
+async function realTimeline(){
+  if(!interfaceApi||!currentSessionID){toast('Aucune session active');return;}
+  try{
+    const rows=await interfaceApi.loadTimeline(currentSessionID,fetch);
+    openList('Jump to message',rows.map(r=>[r.label,r.detail]),null,label=>{
+      const ms=[...col.querySelectorAll('.me,.p')];const m=ms.find(x=>x.textContent.slice(0,64)===String(label));if(m)m.scrollIntoView({block:'center',behavior:'smooth'});
+    },true);
+  }catch(e){console.error(e);realFail('Timeline');}
+}
+async function realSessions(){
+  if(!interfaceApi)return;
+  try{
+    const rows=await interfaceApi.loadSessions(fetch);
+    openRealList('Switch session',rows,currentSessionID,v=>{
+      const found=findMaquetteSession(String(v));
+      if(found)openSession(found[0],found[1]);else toast('Session absente de la barre latérale');
+    });
+  }catch(e){console.error(e);realFail('Sessions');}
+}
+async function realStatus(){
+  if(!interfaceApi)return;
+  try{
+    const loaded=await interfaceApi.loadStatus(fetch,location.origin);
+    openDlg('<h3>Status<kbd>Esc</kbd></h3>'+krows(interfaceApi.statusPairs({...loaded,agent:S.agent,model:S.model})));
+  }catch(e){console.error(e);realFail('Status');}
+}
+async function realSkills(){
+  if(!interfaceApi)return;
+  try{
+    const rows=await interfaceApi.loadSkills(fetch);
+    openDlg('<h3>Skills<kbd>Esc</kbd></h3>'+(rows.length?rows.map(r=>'<div class="krow"><span><b style="font-family:var(--mono);color:var(--tx)">'+escText(r.label)+'</b></span><span style="max-width:60%;text-align:right;color:var(--tx-3)">'+escText(r.detail||'')+'</span></div>').join(''):'<div class="empty">No skill loaded.</div>'));
+  }catch(e){console.error(e);realFail('Skills');}
+}
+async function realSubagents(){
+  if(!interfaceApi)return;
+  try{
+    const rows=await interfaceApi.loadSubagents(fetch);
+    openDlg('<h3>Subagents<kbd>Esc</kbd></h3>'+(rows.length?rows.map(r=>'<div class="krow"><span><b style="color:var(--tx);font-weight:500">'+escText(r.label)+'</b></span><span style="color:var(--tx-3)">'+escText(r.detail||'')+'</span></div>').join(''):'<div class="empty">No subagent available.</div>'));
+  }catch(e){console.error(e);realFail('Subagents');}
+}
+async function realConnect(){
+  if(!interfaceApi)return;
+  try{
+    const loaded=await interfaceApi.loadProviders(fetch);const rows=loaded.rows;const byLabel=new Map(rows.map(r=>[r.label,r]));
+    openList('Connect provider',rows.map(r=>[r.label,r.detail]),null,async label=>{
+      const row=byLabel.get(String(label));if(!row)return;
+      if(row.on){toast(row.value+' : déjà connecté');return;}
+      if(row.method>=0){
+        try{const url=await interfaceApi.providerOauthUrl(row.value,row.method,fetch);if(!url){toast('URL OAuth absente du serveur');return;}window.open(url,'_blank','noopener');toast('Autorisation OAuth ouverte : '+row.value);}
+        catch(e){console.error(e);realFail('OAuth '+row.value);}
+      }else toast(row.value+' : clé API à configurer dans la configuration (aucune connexion simulée)');
+    });
+  }catch(e){console.error(e);realFail('Providers');}
+}
+async function realConfig(){
+  if(!interfaceApi)return;
+  try{const loaded=await interfaceApi.loadConfig(fetch);openDlg('<h3>Configuration<kbd>Esc</kbd></h3>'+krows(loaded.pairs));}
+  catch(e){console.error(e);realFail('Configuration');}
+}
+async function realLogs(){
+  if(!interfaceApi||!currentSessionID){toast('Aucune session active');return;}
+  try{const lines=await interfaceApi.loadLogView(currentSessionID,fetch);const el=$('#logView');if(el)el.textContent=lines.join('\n');}
+  catch(e){console.error(e);realFail('Journaux');}
+}
+async function realDiff(){
+  if(!interfaceApi||!currentSessionID){toast('Aucune session active');return;}
+  try{
+    const files=await interfaceApi.loadDiff(currentSessionID,fetch);
+    const body=files.length?files.map(f=>'<div class="h">'+escText(f.name)+'</div>'+f.lines.map(l=>'<div class="'+(l.kind==='add'?'a':l.kind==='del'?'r':'h')+'">'+escText(l.text)+'</div>').join('')).join(''):'<div>No change in this session.</div>';
+    openDlg('<h3>Diff viewer<kbd>Esc</kbd></h3><div class="diff">'+body+'</div>');
+  }catch(e){console.error(e);realFail('Diff');}
+}
+function mcpDialog(){
+  const draw=()=>{
+    openDlg('<h3>Toggle MCPs<kbd>Esc</kbd></h3><div id="ml">'+MCPS.map((m,k)=>'<div class="mi" data-k="'+k+'"><b>'+escText(m.n)+'</b><span class="d">'+(m.on?'Connected':'Disabled')+'</span><span class="sw'+(m.on?' on':'')+'"></span></div>').join('')+'</div>');
+    const ml=$('#ml');if(ml)ml.onclick=onToggle;
+  };
+  const onToggle=async e=>{
+    const it=e.target.closest('.mi');if(!it)return;const m=MCPS[+it.dataset.k];if(!m)return;
+    if(!DEMO&&interfaceApi){
+      try{await interfaceApi.toggleMcp(m.n,!m.on,fetch);}catch(err){console.error(err);toast('Bascule impossible : '+m.n);return;}
+    }
+    m.on=!m.on;rp();const t=$('#dlg').scrollTop;draw();$('#dlg').scrollTop=t;
+  };
+  draw();
+}
+async function realMcps(){
+  if(!interfaceApi)return;
+  try{const rows=await interfaceApi.loadMcpStatus(fetch);MCPS.splice(0,MCPS.length,...rows);mcpDialog();}
+  catch(e){console.error(e);realFail('MCP');}
+}
+function restoreViewState(){
+  if(!interfaceApi)return;
+  try{
+    const storage=localStorage;
+    const th=interfaceApi.readViewState(storage,'theme','');if(typeof th==='string'&&th)document.documentElement.dataset.th=th;
+    if(interfaceApi.readViewState(storage,'thinking',false))col.classList.add('think');
+    if(interfaceApi.readViewState(storage,'timestamps',false))col.classList.add('stamps');
+  }catch{}
+}
+
 const H={
- agents:()=>openList('Switch agent',AG,S.agent,setAgent),
+ agents:()=>{if(DEMO){openList('Switch agent',AG,S.agent,setAgent);return;}void realAgents();},
  compact:()=>{S.ctx=18;append(R.run('Compacting context',{i:0,l:1,t:'1.8s',o:'context 634k → 18k tokens'})+R.p('Contexte réduit de <code>634k</code> à <code>18k</code> tokens.',{l:1,i:1}));rp();status();},
- config:()=>switchTab('config'),
- connect:()=>openList('Connect provider',[['OpenCode','free models'],['OpenCode Go','subscription'],['GitHub Copilot','device login'],['Anthropic','API key'],['OpenAI','API key'],['OpenRouter','API key'],['Ollama','local']],null,n=>toast(n+' : connexion simulée')),
+ config:()=>{switchTab('config');if(!DEMO)void realConfig();},
+ connect:()=>{if(DEMO){openList('Connect provider',[['OpenCode','free models'],['OpenCode Go','subscription'],['GitHub Copilot','device login'],['Anthropic','API key'],['OpenAI','API key'],['OpenRouter','API key'],['Ollama','local']],null,n=>toast(n+' : connexion simulée'));return;}void realConnect();},
  copy:()=>toast('Transcript copié dans le presse-papiers (simulé)'),
- 'decision-model':()=>openList('Decision model',MO,S.decision,v=>{S.decision=v;toast('Decision model : '+v);}),
- diff:()=>openDlg('<h3>Diff viewer<kbd>Esc</kbd></h3><div class="diff"><div class="h">packages/webui/src/git-panel.tsx</div><div class="h">@@ -41,7 +41,9 @@</div><div> if (state() === "behind") return &lt;Behind /&gt;</div><div class="r">-if (!ready()) return &lt;Loading /&gt;</div><div class="a">+if (state() === "divergent") {</div><div class="a">+  return &lt;DivergentNotice onRetry={refresh} /&gt;</div><div class="a">+}</div><div class="a">+if (!ready()) return &lt;Loading /&gt;</div><div> return &lt;Clean /&gt;</div></div>'),
+ 'decision-model':()=>{if(DEMO){openList('Decision model',MO,S.decision,v=>{S.decision=v;toast('Decision model : '+v);});return;}void realDecisionModels();},
+ diff:()=>{if(DEMO){openDlg('<h3>Diff viewer<kbd>Esc</kbd></h3><div class="diff"><div class="h">packages/webui/src/git-panel.tsx</div><div class="h">@@ -41,7 +41,9 @@</div><div> if (state() === "behind") return &lt;Behind /&gt;</div><div class="r">-if (!ready()) return &lt;Loading /&gt;</div><div class="a">+if (state() === "divergent") {</div><div class="a">+  return &lt;DivergentNotice onRetry={refresh} /&gt;</div><div class="a">+}</div><div class="a">+if (!ready()) return &lt;Loading /&gt;</div><div> return &lt;Clean /&gt;</div></div>');return;}void realDiff();},
  editor:()=>toast('Ouverture de $EDITOR (simulé)'),
  exit:()=>toast('Exit : ferme l’onglet dans l’app réelle'),
  export:()=>toast('Transcript exporté en Markdown (simulé)'),
@@ -422,13 +566,11 @@ const H={
  'goal-generate':()=>{GOAL.st='generated';app.classList.add('rp');rp();toast('Goal generated');},
  'goal-regenerate':()=>{GOAL.st='regenerated';app.classList.add('rp');rp();toast('Goal regenerated');},
  'goal-skip':()=>{GOAL.st='skipped';app.classList.add('rp');rp();toast('Goal skipped');},
- help:()=>openDlg('<h3>Help<kbd>Esc</kbd></h3>'+[['/','commands'],['@','tag files or sessions'],['ctrl+p','command palette'],['alt+n','new session'],['ctrl+r','rename session'],['ctrl+d','delete session'],['esc','interrupt'],['enter','queue (while running)'],['alt+s','steer']].map(x=>'<div class="krow"><span>'+x[1]+'</span><kbd>'+x[0]+'</kbd></div>').join('')),
+ help:()=>{const keys=!DEMO&&interfaceApi?interfaceApi.HELP_KEYS:[['/','commands'],['@','tag files or sessions'],['ctrl+p','command palette'],['alt+n','new session'],['ctrl+r','rename session'],['ctrl+d','delete session'],['esc','interrupt'],['enter','queue (while running)'],['alt+s','steer']];openDlg('<h3>Help<kbd>Esc</kbd></h3>'+keys.map(x=>'<div class="krow"><span>'+x[1]+'</span><kbd>'+x[0]+'</kbd></div>').join(''));},
  init:()=>append(R.edit('AGENTS.md',{i:0,l:1,a:'+42',d:'-0',t:'4ms'})+R.p('<code>AGENTS.md</code> créé : conventions, commandes de test et règles du dépôt.',{l:1,i:1})),
- logs:()=>switchTab('logs'),
- mcps:()=>{const draw=()=>openDlg('<h3>Toggle MCPs<kbd>Esc</kbd></h3><div id="ml">'+MCPS.map((m,k)=>'<div class="mi" data-k="'+k+'"><b>'+m.n+'</b><span class="d">'+(m.on?'Connected':'Disabled')+'</span><span class="sw'+(m.on?' on':'')+'"></span></div>').join('')+'</div>');
-   draw();$('#ml').onclick=e=>{const it=e.target.closest('.mi');if(!it)return;const m=MCPS[+it.dataset.k];m.on=!m.on;rp();const t=$('#dlg').scrollTop;draw();$('#dlg').scrollTop=t;$('#ml').onclick=arguments.callee;};
-   },
- models:()=>openList('Switch model',MO,S.model,setModel),
+ logs:()=>{switchTab('logs');if(!DEMO)void realLogs();},
+ mcps:()=>{if(DEMO){mcpDialog();return;}void realMcps();},
+ models:()=>{if(DEMO){openList('Switch model',MO,S.model,setModel);return;}void realModels();},
  new:async()=>{
   if(DEMO){sel=null;renderTree();ta.value='';welcome();ta.focus();return;}
   if(!dataApi)return;
@@ -443,18 +585,18 @@ const H={
   rename:()=>{openDlg('<h3>Rename session<kbd>Esc</kbd></h3><input class="in" id="rn" value="'+escHtml($('#title').textContent)+'"><div class="ga"><button class="gb" id="rok">Rename</button></div>');setTimeout(()=>$('#rn').select(),30);
     const ok=async()=>{const v=$('#rn').value.trim();if(v&&sel){try{if(!DEMO&&configApi&&WS[sel[0]]?.s[sel[1]]?.id)await configApi.renameSession(WS[sel[0]].s[sel[1]].id,v);WS[sel[0]].s[sel[1]].t=v;$('#title').textContent=v;renderTree();toast('Renamed');}catch(e){console.error(e);toast('Renommage impossible');}}closeDlg();};$('#rok').onclick=()=>{void ok();};$('#rn').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();void ok();}};},
  review:()=>append(R.del('Review uncommitted changes',{i:0,l:1,t:'12s'})+R.p('Revue terminée : <code>2</code> fichiers modifiés, aucun secret détecté, <code>1</code> remarque sur <code>git-panel.tsx</code>.',{l:1,i:1})),
- sessions:()=>{const all=[];WS.forEach((w,wi)=>w.s.forEach((s,si)=>all.push([s.t,w.n+' · '+s.m,wi,si])));openList('Switch session',all.map(x=>[x[0],x[1]]),$('#title').textContent,n=>{const x=all.find(y=>y[0]===n);openSession(x[2],x[3]);});},
+ sessions:()=>{if(DEMO){const all=[];WS.forEach((w,wi)=>w.s.forEach((s,si)=>all.push([s.t,w.n+' · '+s.m,wi,si])));openList('Switch session',all.map(x=>[x[0],x[1]]),$('#title').textContent,n=>{const x=all.find(y=>y[0]===n);openSession(x[2],x[3]);});return;}void realSessions();},
  share:()=>toast('Lien de partage local copié (simulé)'),
- skills:()=>openDlg('<h3>Skills<kbd>Esc</kbd></h3>'+CMD.filter(c=>c.tag==='skill').map(c=>'<div class="krow"><span><b style="font-family:var(--mono);color:var(--tx)">'+c.n+'</b></span><span style="max-width:60%;text-align:right;color:var(--tx-3)">'+c.d+'</span></div>').join('')),
- status:()=>openDlg('<h3>Status<kbd>Esc</kbd></h3>'+[['Version','OpenCodev2 2.4.31'],['Server','http://127.0.0.1:4097'],['Repo','Neoxff/opencodev2 · main'],['Agent',S.agent],['Model',S.model+' · '+S.variant],['Context',S.ctx+'k / 1.0M'],['MCP',MCPS.filter(m=>m.on).length+'/'+MCPS.length+' connected'],['LSP','disabled']].map(x=>'<div class="krow"><span>'+x[0]+'</span><b style="font-weight:500;color:var(--tx)">'+x[1]+'</b></div>').join('')),
- subagent:()=>openDlg('<h3>Subagents<kbd>Esc</kbd></h3>'+AG.map(a=>'<div class="krow"><span><b style="color:var(--tx);font-weight:500">'+a[0]+'</b></span><span style="color:var(--tx-3)">'+a[1]+'</span></div>').join('')),
- themes:()=>openList('Switch theme',[['Noir pur','default'],['Noir contraste élevé',''],['Noir chaud','accent ambre']],null,n=>{document.documentElement.dataset.th=n.includes('contraste')?'contrast':n.includes('chaud')?'warm':'';toast('Theme : '+n);}),
- thinking:()=>{col.classList.toggle('think');toast(col.classList.contains('think')?'Thinking expanded':'Thinking collapsed');},
- timeline:()=>{const ms=[...col.querySelectorAll('.me,.p')];openList('Jump to message',ms.map((m,k)=>[m.textContent.slice(0,64),'#'+(k+1)]),null,n=>{const m=ms.find(x=>x.textContent.slice(0,64)===n);if(m)m.scrollIntoView({block:'center',behavior:'smooth'});});},
- timestamps:()=>{col.classList.toggle('stamps');toast(col.classList.contains('stamps')?'Timestamps shown':'Timestamps hidden');},
+ skills:()=>{if(DEMO){openDlg('<h3>Skills<kbd>Esc</kbd></h3>'+CMD.filter(c=>c.tag==='skill').map(c=>'<div class="krow"><span><b style="font-family:var(--mono);color:var(--tx)">'+c.n+'</b></span><span style="max-width:60%;text-align:right;color:var(--tx-3)">'+c.d+'</span></div>').join(''));return;}void realSkills();},
+ status:()=>{if(DEMO){openDlg('<h3>Status<kbd>Esc</kbd></h3>'+[['Version','OpenCodev2 2.4.31'],['Server','http://127.0.0.1:4097'],['Repo','Neoxff/opencodev2 · main'],['Agent',S.agent],['Model',S.model+' · '+S.variant],['Context',S.ctx+'k / 1.0M'],['MCP',MCPS.filter(m=>m.on).length+'/'+MCPS.length+' connected'],['LSP','disabled']].map(x=>'<div class="krow"><span>'+x[0]+'</span><b style="font-weight:500;color:var(--tx)">'+x[1]+'</b></div>').join(''));return;}void realStatus();},
+ subagent:()=>{if(DEMO){openDlg('<h3>Subagents<kbd>Esc</kbd></h3>'+AG.map(a=>'<div class="krow"><span><b style="color:var(--tx);font-weight:500">'+a[0]+'</b></span><span style="color:var(--tx-3)">'+a[1]+'</span></div>').join(''));return;}void realSubagents();},
+ themes:()=>openList('Switch theme',[['Noir pur','default'],['Noir contraste élevé',''],['Noir chaud','accent ambre']],null,n=>{document.documentElement.dataset.th=n.includes('contraste')?'contrast':n.includes('chaud')?'warm':'';if(!DEMO&&interfaceApi)interfaceApi.writeViewState(localStorage,'theme',document.documentElement.dataset.th||'');toast('Theme : '+n);}),
+ thinking:()=>{col.classList.toggle('think');if(!DEMO&&interfaceApi)interfaceApi.writeViewState(localStorage,'thinking',col.classList.contains('think'));toast(col.classList.contains('think')?'Thinking expanded':'Thinking collapsed');},
+ timeline:()=>{if(DEMO){const ms=[...col.querySelectorAll('.me,.p')];openList('Jump to message',ms.map((m,k)=>[m.textContent.slice(0,64),'#'+(k+1)]),null,n=>{const m=ms.find(x=>x.textContent.slice(0,64)===n);if(m)m.scrollIntoView({block:'center',behavior:'smooth'});});return;}void realTimeline();},
+ timestamps:()=>{col.classList.toggle('stamps');if(!DEMO&&interfaceApi)interfaceApi.writeViewState(localStorage,'timestamps',col.classList.contains('stamps'));toast(col.classList.contains('stamps')?'Timestamps shown':'Timestamps hidden');},
  undo:()=>{const m=[...col.querySelectorAll('.me')].pop();if(!m){toast('Rien à annuler');return;}let n=m;while(n){const x=n.nextSibling;n.remove();n=x;}toast('Dernier message annulé');sbar();},
- variants:()=>openList('Switch model variant',VA,S.variant,setVar),
- 'vision-model':()=>openList('Vision model (image fallback)',MO,S.vision,v=>{S.vision=v;toast('Vision model : '+v);})
+ variants:()=>{if(DEMO){openList('Switch model variant',VA,S.variant,setVar);return;}void realVariants();},
+ 'vision-model':()=>{if(DEMO){openList('Vision model (image fallback)',MO,S.vision,v=>{S.vision=v;toast('Vision model : '+v);});return;}void realVisionModels();}
 };
 function skillOrMcp(c,args){const t=c.tag;const i={i:0,l:1,t:'0.4s'};
   if(t==='skill')append(R.sk(c.k,i)+R.p('Skill <code>'+c.k+'</code> chargé'+(args?' avec « '+args+' »':'')+'. Je l’applique et je te rends le résultat.',{l:1,i:1}));
@@ -618,8 +760,8 @@ if(innerWidth<1360)app.classList.remove('rp');
 async function bootData(){
   if(DEMO)return true;
   try{
-    const [data,composer,config]=await Promise.all([import('/ui/data.js'),import('/ui/composer.js'),import('/ui/config-logs.js')]);
-    dataApi=data;composerApi=composer;configApi=config;
+    const [data,composer,config,commands]=await Promise.all([import('/ui/data.js'),import('/ui/composer.js'),import('/ui/config-logs.js'),import('/ui/interface-commands.js')]);
+    dataApi=data;composerApi=composer;configApi=config;interfaceApi=commands;
     const caps=await configApi.loadCapabilities().catch(()=>({canSteer:false}));canSteer=!!caps.canSteer;
     const [workspaces,composerConfig]=await Promise.all([dataApi.loadSidebarData(),composerApi.loadComposerConfig()]);
     WS.splice(0,WS.length,...workspaces);
@@ -631,7 +773,7 @@ async function bootData(){
 }
 if(DEMO){renderTree();rp();welcome();}
 else void bootData().then(()=>{
-  renderTree();rp();welcome();
+  renderTree();rp();welcome();restoreViewState();
   const wanted=new URLSearchParams(location.search).get('session');
   if(wanted){const found=findMaquetteSession(wanted);if(found)openSession(found[0],found[1]);}
 });
