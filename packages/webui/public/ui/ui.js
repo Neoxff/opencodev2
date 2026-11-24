@@ -513,12 +513,14 @@ function makeSessionHost(){
       $('#edno').onclick=closeDlg;$('#edok').onclick=save;
       setTimeout(()=>$('#ed').focus(),30);
     },
-    confirm:message=>new Promise(resolve=>{
+    confirm:(message,options={})=>new Promise(resolve=>{
       const onKey=e=>{if(e.key==='Escape')done(false);};
       const onOv=e=>{if(e.target===ov)done(false);};
       const done=v=>{removeEventListener('keydown',onKey);ov.removeEventListener('mousedown',onOv);closeDlg();resolve(v);};
       addEventListener('keydown',onKey);ov.addEventListener('mousedown',onOv);
-      openDlg('<h3>Exit OpenCodev2?</h3><p>'+escHtml(message)+'</p><div class="ga"><button class="gb" id="cfno">Cancel</button><button class="gb" id="cfyes">Exit</button></div>');
+      const title=escHtml(options.title||'Exit OpenCodev2?');
+      const accept=escHtml(options.acceptLabel||'Exit');
+      openDlg('<h3>'+title+'</h3><p>'+escHtml(message)+'</p><div class="ga"><button class="gb" id="cfno">Cancel</button><button class="gb" id="cfyes">'+accept+'</button></div>');
       $('#cfno').onclick=()=>done(false);$('#cfyes').onclick=()=>done(true);
     }),
     addActivity:a=>{activityLog.push(a);append(activityRow(a));},

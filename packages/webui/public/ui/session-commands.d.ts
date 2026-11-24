@@ -23,6 +23,9 @@ export interface CommandSpec {
   needsSession: boolean
   needsConfirmation: boolean
   asksForArgument: boolean
+  confirmationTitle?: string
+  confirmationMessage?: string
+  confirmationAccept?: string
 }
 
 export const SESSION_COMMANDS: readonly CommandSpec[]
@@ -113,7 +116,10 @@ export interface SessionCommandHost {
   clearSession: () => void
   rename: (sessionID: string) => void
   openEditor: () => void
-  confirm: (message: string) => Promise<boolean>
+  confirm: (
+    message: string,
+    options?: { title?: string; acceptLabel?: string },
+  ) => Promise<boolean>
   addActivity: (activity: CommandActivity) => void
   updateActivity: (id: string, status: ActivityStatus) => void
   /** Origine et chemin de l'app, pour `/share` (URL strictement locale). */

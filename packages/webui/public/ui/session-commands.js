@@ -41,7 +41,12 @@ export const SESSION_COMMANDS = [
   spec("new", "New session", { needsSession: false }),
   spec("rename", "Rename session", { asksForArgument: true }),
   spec("fork", "Fork session"),
-  spec("undo", "Undo previous message"),
+  spec("undo", "Undo previous message", {
+    needsConfirmation: true,
+    confirmationTitle: "Undo previous message?",
+    confirmationMessage: "The last user message and its response will be reverted.",
+    confirmationAccept: "Undo",
+  }),
   spec("compact", "Compact session"),
   spec("copy", "Copy session transcript"),
   spec("export", "Export session transcript"),
@@ -257,7 +262,14 @@ export async function runCommandLine(text, ctx) {
     if (found) {
       if (found.needsSession) requireSession(ctx)
       if (found.needsConfirmation) {
-        const accepted = await ctx.host.confirm("Exit OpenCodev2? The current session view will be closed.")
+        if (typeof ctx.host.confirm !== "function") return { ok: false, canceled: true }
+        const accepted = await ctx.host.confirm(
+          found.confirmationMessage ?? "Exit OpenCodev2? The current session view will be closed.",
+          {
+            title: found.confirmationTitle ?? "Exit OpenCodev2?",
+            acceptLabel: found.confirmationAccept ?? "Exit",
+          },
+        )
         if (!accepted) return { ok: false, canceled: true }
       }
       await runBuiltIn(found.name, parsed.arguments, ctx)

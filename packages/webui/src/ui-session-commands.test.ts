@@ -171,6 +171,10 @@ describe("analyse de la ligne de commande", () => {
       "exit",
     ])
     expect(commandSpec("exit")?.needsConfirmation).toBe(true)
+    expect(commandSpec("undo")?.needsConfirmation).toBe(true)
+    expect(commandSpec("undo")?.confirmationTitle).toBe("Undo previous message?")
+    expect(commandSpec("undo")?.confirmationAccept).toBe("Undo")
+    expect(SESSION_COMMANDS.filter((c) => c.needsConfirmation).map((c) => c.name)).toEqual(["undo", "exit"])
     expect(commandSpec("new")?.needsSession).toBe(false)
   })
 
@@ -474,6 +478,68 @@ describe("commandes de session nommées", () => {
     expect(canceled.cleared).toBe(0)
     expect(canceled.errors).toEqual([])
     expect(canceled.notices).toEqual([])
+  })
+
+  test("/undo sans mécanisme de confirmation ne revert pas", async () => {
+    const log = newLog()
+    let reverts = 0
+    const transport = fakeTransport({
+      revert: async () => {
+        reverts++
+      },
+    })
+    const result = await runCommandLine("/undo", context(log, transport, { confirm: undefined as any }))
+    expect(result.canceled).toBe(true)
+    expect(reverts).toBe(0)
+    expect(log.reloaded).toBe(0)
+    expect(log.cleared).toBe(0)
+    expect(log.notices).toEqual([])
+    expect(log.errors).toEqual([])
+  })
+
+  test("/undo refusé : aucun revert, état inchangé", async () => {
+    const log = newLog()
+    let reverts = 0
+    const transport = fakeTransport({
+      revert: async () => {
+        reverts++
+      },
+    })
+    const result = await runCommandLine(
+      "/undo",
+      context(log, transport, { confirm: async () => false }),
+    )
+    expect(result.canceled).toBe(true)
+    expect(reverts).toBe(0)
+    expect(log.reloaded).toBe(0)
+    expect(log.cleared).toBe(0)
+    expect(log.notices).toEqual([])
+    expect(log.errors).toEqual([])
+  })
+
+  test("/undo confirmé : revert appelé une seule fois", async () => {
+    const log = newLog()
+    let reverts = 0
+    const transport = fakeTransport({
+      revert: async () => {
+        reverts++
+      },
+    })
+    const result = await runCommandLine("/undo", context(log, transport))
+    expect(result.ok).toBe(true)
+    expect(reverts).toBe(1)
+    expect(log.reloaded).toBe(1)
+    expect(log.notices).toContain("Last message reverted")
+  })
+
+  test("/undo sans message précédent : erreur propre", async () => {
+    const log = newLog()
+    const transport = createTransport(fakeFetch({ "/session/ses_active/message": [] }), {})
+    const result = await runCommandLine("/undo", context(log, transport))
+    expect(result.ok).toBe(false)
+    expect(log.errors).toContain("No message to revert")
+    expect(log.reloaded).toBe(0)
+    expect(log.notices).toEqual([])
   })
 })
 
