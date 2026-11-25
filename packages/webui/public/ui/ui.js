@@ -5,12 +5,20 @@ const $=s=>document.querySelector(s);
 const ic=(n,c)=>'<svg class="i '+(c||'')+'"><use href="#'+n+'"/></svg>';
 const escText=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+/* Feuille de style isolée de l'indicateur steer : aucun fichier existant n'est modifié. */
+if(!document.querySelector('link[data-delivery-fix]')){
+  const l=document.createElement('link');l.rel='stylesheet';l.dataset.deliveryFix='1';
+  const p=location.pathname;l.href=(p.endsWith('/')?p:p+'/')+'session-delivery.css';
+  document.head.appendChild(l);
+}
 const panel=$('#panel'),col=$('#col'),scroll=$('#scroll'),ta=$('#ta'),dock=$('#dock'),app=$('#app');
 let running=false,tab='conv',sel=null,timers=[];
 let dataApi=null,configApi=null,currentSession=null,currentSessionID=null;
 let canSteer=false,configEditing=false,logTimer=null;
+let deliveryApi=null,queuedLocal={};
 let liveSource=null,liveSession=null,liveSeen=new Set(),liveIndex=0,liveMessages=[],liveRoles={},liveRunning=false;
 const lineIndexByKey=new Map();
+const lineMsgByKey=new Map();
 
 const S={agent:'orchestrator',variant:'max',model:'Tidepool Alpha Free',decision:'Tidepool Alpha Free',vision:'Hy4 Flash Free',ctx:634,tps:52};
 
@@ -54,15 +62,20 @@ function status(){
   if(!DEMO&&composerMetrics&&composerSelection){
     const parts=composerApi.statusParts(composerMetrics,composerSelection);
     const hints=(running?'<span><kbd>esc</kbd> interrupt</span><span><kbd>enter</kbd> queue</span>'+(canSteer?'<span><kbd>alt+s</kbd> steer</span>':'<span>steer indisponible</span>'):'')+'<span><b>'+escText(parts.agent)+'</b> · '+escText(parts.model)+' · '+escText(parts.variant)+'</span><span>'+escText(parts.tokens)+'</span>';
-    $('#status').innerHTML=hints+'<span class="sp"></span><span>'+(parts.tps?escText(parts.tps):'')+'</span><button id="stAt">@ tag files</button><button id="stPal">ctrl+p commands</button>';
+    $('#status').innerHTML=hints+steerIndicator()+'<span class="sp"></span><span>'+(parts.tps?escText(parts.tps):'')+'</span><button id="stAt">@ tag files</button><button id="stPal">ctrl+p commands</button>';
     $('#stPal').onclick=()=>openPalette('');$('#stAt').onclick=()=>{ta.focus();ta.value+=' @';renderMenu();};
     return;
   }
   const pct=Math.round(S.ctx/1000*100/1.0)/1;const p=Math.round(S.ctx/10)/1;
-  $('#status').innerHTML=(running?'<span><kbd>esc</kbd> interrupt</span><span><kbd>enter</kbd> queue</span><span><kbd>alt+s</kbd> steer</span>':'<span><b>'+S.agent+'</b> · '+S.model+' · '+S.variant+'</span><span>'+S.ctx+'k / 1.0M ('+Math.round(S.ctx/10)+'%)</span>')+'<span class="sp"></span><span>'+(running?S.tps+' tok/s':'')+'</span><button id="stAt">@ tag files</button><button id="stPal">ctrl+p commands</button>';
+  $('#status').innerHTML=(running?'<span><kbd>esc</kbd> interrupt</span><span><kbd>enter</kbd> queue</span><span><kbd>alt+s</kbd> steer</span>':'<span><b>'+S.agent+'</b> · '+S.model+' · '+S.variant+'</span><span>'+S.ctx+'k / 1.0M ('+Math.round(S.ctx/10)+'%)</span>')+steerIndicator()+'<span class="sp"></span><span>'+(running?S.tps+' tok/s':'')+'</span><button id="stAt">@ tag files</button><button id="stPal">ctrl+p commands</button>';
   $('#stPal').onclick=()=>openPalette('');$('#stAt').onclick=()=>{ta.focus();ta.value+=' @';renderMenu();};
 }
 function setRun(){const s=$('#send');s.classList.toggle('run',running);s.setAttribute('aria-label',running?'Interrupt':'Send');$('#work').style.display=running?'flex':'none';}
+/* Indicateur « steer » : présent tant qu'une consigne est en attente d'intégration. */
+function steerIndicator(){
+  if(DEMO||!deliveryApi||!running)return '';
+  return deliveryApi.deliveryIndicator(liveMessages,true)?'<span class="steer-ind">steer</span>':'';
+}
 
 /* ---------- Barre latérale ---------- */
 const WS=DEMO?[
@@ -117,6 +130,7 @@ function upsertConversationLine(line){
   let index=lineIndexByKey.get(key);
   if(index===undefined){index=liveIndex++;lineIndexByKey.set(key,index);}
   line.i=index;
+  if(line.messageID)lineMsgByKey.set(key,line.messageID);
   const html=dataApi.renderLine(line,{icon:ic,stamp:conversationStamp});
   if(!html)return;
   const old=[...col.querySelectorAll('[data-line]')].find(el=>el.dataset.line===key);
@@ -128,9 +142,21 @@ function upsertConversationLine(line){
   tick();scroll.scrollTop=1e6;sbar();
 }
 function renderConversation(lines){
-  col.innerHTML='';lineIndexByKey.clear();liveIndex=0;
+  col.innerHTML='';lineIndexByKey.clear();lineMsgByKey.clear();liveIndex=0;
   for(const line of (lines||[]))upsertConversationLine(line);
   scroll.scrollTop=1e6;sbar();
+}
+/* Recalcule les badges « queued » sur les lignes déjà rendues, sans reconstruire la conversation. */
+function refreshDelivery(){
+  if(DEMO||!deliveryApi)return;
+  queuedLocal=deliveryApi.queuedUserIDs(liveMessages,running);
+  col.querySelectorAll('.me[data-line]').forEach(el=>{
+    const mid=lineMsgByKey.get(el.dataset.line);if(!mid)return;
+    const want=Boolean(queuedLocal[mid]);const has=Boolean(el.querySelector('.q'));
+    if(want&&!has)el.insertAdjacentHTML('beforeend','<span class="q">queued</span>');
+    else if(!want&&has)el.querySelector('.q').remove();
+  });
+  status();
 }
 function applyGoal(goal){
   if(!goal)return;
@@ -145,7 +171,7 @@ function handleLiveEvent(ev,sessionID){
   if(p.sessionID&&p.sessionID!==sessionID)return;
   if(ev.type==='session.status'){
     const busy=dataApi.statusFromEvent(ev);
-    if(busy!==undefined){running=busy;liveRunning=busy;setRun();status();updateSessionBusy(sessionID,busy);}
+    if(busy!==undefined){running=busy;liveRunning=busy;setRun();updateSessionBusy(sessionID,busy);refreshDelivery();}
     return;
   }
   if(ev.type==='session.updated'){
@@ -163,14 +189,23 @@ function handleLiveEvent(ev,sessionID){
       liveRoles[info.id]=info.role;
       const idx=liveMessages.findIndex(m=>m.info?.id===info.id);
       if(idx>=0)liveMessages[idx]={...liveMessages[idx],info};else liveMessages.push({info,parts:[]});
+      refreshDelivery();
     }
     return;
   }
   if(ev.type==='message.part.updated'){
     const part=p.part||{};
-    if(part.messageID&&!liveRoles[part.messageID])liveRoles[part.messageID]='assistant';
+    if(part.messageID){
+      if(!liveRoles[part.messageID])liveRoles[part.messageID]='assistant';
+      const idx=liveMessages.findIndex(m=>m.info?.id===part.messageID);
+      const msg=idx>=0?liveMessages[idx]:{info:{id:part.messageID},parts:[]};
+      if(!Array.isArray(msg.parts))msg.parts=[];
+      if(!msg.parts.some(x=>x?.id===part.id))msg.parts.push(part);
+      if(idx<0)liveMessages.push(msg);
+    }
     const queued=dataApi.queuedUserIDs(liveMessages,running);
     for(const line of dataApi.eventToLines(ev,{sessionID,roles:liveRoles,queued}))upsertConversationLine(line);
+    refreshDelivery();
     return;
   }
   if(ev.type==='session.diff'||ev.type==='file.edited'){
@@ -593,6 +628,13 @@ addEventListener('keydown',e=>{
   if(e.altKey&&e.key.toLowerCase()==='n'){e.preventDefault();H.new();return;}
   if(e.altKey&&e.key.toLowerCase()==='s'){e.preventDefault();toast('Steer : consigne injectée dans le tour en cours');return;}
   if((e.ctrlKey)&&e.key.toLowerCase()==='r'&&sel){e.preventDefault();H.rename();return;}
+  if(e.key==='Escape'&&!DEMO&&running&&!menu.classList.contains('on')&&!ov.classList.contains('on')){
+    // L'écouteur est au niveau du document : esc annule la file aussi sans focus dans le composeur.
+    queuedLocal=deliveryApi?deliveryApi.queueAfterAbort():{};
+    void interruptAgent();
+    refreshDelivery();
+    return;
+  }
   if(e.key==='Escape'){
     if(ov.classList.contains('on'))closeDlg();
     else if(running&&!menu.classList.contains('on')){
@@ -618,8 +660,8 @@ if(innerWidth<1360)app.classList.remove('rp');
 async function bootData(){
   if(DEMO)return true;
   try{
-    const [data,composer,config]=await Promise.all([import('/ui/data.js'),import('/ui/composer.js'),import('/ui/config-logs.js')]);
-    dataApi=data;composerApi=composer;configApi=config;
+    const [data,composer,config,delivery]=await Promise.all([import('/ui/data.js'),import('/ui/composer.js'),import('/ui/config-logs.js'),import('/ui/session-delivery.js')]);
+    dataApi=data;composerApi=composer;configApi=config;deliveryApi=delivery;
     const caps=await configApi.loadCapabilities().catch(()=>({canSteer:false}));canSteer=!!caps.canSteer;
     const [workspaces,composerConfig]=await Promise.all([dataApi.loadSidebarData(),composerApi.loadComposerConfig()]);
     WS.splice(0,WS.length,...workspaces);

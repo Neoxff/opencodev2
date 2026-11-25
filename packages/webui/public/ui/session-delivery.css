@@ -1,0 +1,12 @@
+/**
+ * session-delivery.css — exception de style AUTORISÉE, limitée à l'indicateur
+ * « steer » de la barre d'état. Chargée uniquement par ui.js via un <link>.
+ * Aucune règle existante de ui.css n'est modifiée.
+ *
+ * Ligne par ligne :
+ * 1. .steer-ind : pastille discrète, même famille que les .pill existantes.
+ * 2. .steer-ind::before : point d'état, sans animation ni couleur vive.
+ */
+
+/* 1 */ .steer-ind{display:inline-block;padding:1px 7px;border:1px solid var(--line-2);border-radius:999px;font-size:11px;color:var(--tx-2);margin-left:8px}
+/* 2 */ .steer-ind::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--amber);margin-right:5px;vertical-align:1px}

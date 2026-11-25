@@ -5,6 +5,8 @@
  * reprend exactement les classes et la structure des helpers R.* de `ui.js`.
  */
 
+import { queuedUserIDs as deliveryQueued, isHiddenSteer } from "./session-delivery.js"
+
 const EDIT_TOOLS = new Set(["edit", "write", "apply_patch", "multiedit", "patch"])
 const DELEGATE_TOOLS = new Set(["task", "subagent", "delegate", "agent", "fork"])
 
@@ -147,6 +149,8 @@ export function eventToLines(event, ctx = {}) {
 
 function partToLines(part, ctx) {
   if (!part || typeof part !== "object" || part.ignored || part.synthetic) return []
+  // Une consigne steer n'est jamais affichée dans la conversation : elle est injectée au modèle.
+  if (part.type === "text" && part?.metadata?.steer === true) return []
   const id = part.id || ctx.eventTime || "part"
   const start = part.time?.start ?? part.state?.time?.start ?? ctx.eventTime
   const end = part.state?.time?.end ?? part.time?.end
@@ -164,7 +168,7 @@ function partToLines(part, ctx) {
     const role = ctx.roleByMessage?.[part.messageID] || (part.role === "user" ? "user" : "assistant")
     if (role === "user") {
       const queued = Boolean(ctx.queued?.[part.messageID] || part.metadata?.queued)
-      return [{ ...base, kind: "me", text, queued }]
+      return [{ ...base, kind: "me", text, queued, messageID: part.messageID }]
     }
     return [{ ...base, kind: "p", html: inlineCode(text) }]
   }
@@ -244,16 +248,7 @@ export function statusFromEvent(event) {
 
 /** Marque le dernier prompt utilisateur sans réponse comme « queued » pendant un tour actif. */
 export function queuedUserIDs(messages, busy) {
-  const result = {}
-  if (!busy || !Array.isArray(messages)) return result
-  const users = messages.filter((m) => m?.info?.role === "user")
-  const last = users[users.length - 1]
-  if (!last?.info?.id) return result
-  const served = messages.some(
-    (m) => m?.info?.role === "assistant" && m?.info?.parentID === last.info.id && m?.info?.finish !== "tool-calls",
-  )
-  if (!served) result[last.info.id] = true
-  return result
+  return deliveryQueued(messages, busy)
 }
 
 export function goalFromSession(session, todos) {
@@ -295,6 +290,7 @@ export function buildConversation(messages, diffs, ctx = {}) {
   }
 
   for (const message of list) {
+    if (isHiddenSteer(message)) continue
     const parts = Array.isArray(message?.parts) ? message.parts : []
     for (const part of parts) {
       lines.push(
