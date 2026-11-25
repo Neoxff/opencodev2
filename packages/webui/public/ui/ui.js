@@ -9,6 +9,7 @@ const panel=$('#panel'),col=$('#col'),scroll=$('#scroll'),ta=$('#ta'),dock=$('#d
 let running=false,tab='conv',sel=null,timers=[];
 let dataApi=null,configApi=null,currentSession=null,currentSessionID=null;
 let canSteer=false,configEditing=false,logTimer=null;
+let errorApi=null,retryState=null;
 let liveSource=null,liveSession=null,liveSeen=new Set(),liveIndex=0,liveMessages=[],liveRoles={},liveRunning=false;
 const lineIndexByKey=new Map();
 
@@ -59,7 +60,8 @@ function status(){
     return;
   }
   const pct=Math.round(S.ctx/1000*100/1.0)/1;const p=Math.round(S.ctx/10)/1;
-  $('#status').innerHTML=(running?'<span><kbd>esc</kbd> interrupt</span><span><kbd>enter</kbd> queue</span><span><kbd>alt+s</kbd> steer</span>':'<span><b>'+S.agent+'</b> · '+S.model+' · '+S.variant+'</span><span>'+S.ctx+'k / 1.0M ('+Math.round(S.ctx/10)+'%)</span>')+'<span class="sp"></span><span>'+(running?S.tps+' tok/s':'')+'</span><button id="stAt">@ tag files</button><button id="stPal">ctrl+p commands</button>';
+  const label=(errorApi&&retryState)?errorApi.runStatusLabel(retryState):'';
+  $('#status').innerHTML=(running?'<span><kbd>esc</kbd> interrupt</span>'+(label?'<span>'+escText(label)+'</span>':'')+'<span><kbd>enter</kbd> queue</span><span><kbd>alt+s</kbd> steer</span>':'<span><b>'+S.agent+'</b> · '+S.model+' · '+S.variant+'</span><span>'+S.ctx+'k / 1.0M ('+Math.round(S.ctx/10)+'%)</span>')+'<span class="sp"></span><span>'+(running?S.tps+' tok/s':'')+'</span><button id="stAt">@ tag files</button><button id="stPal">ctrl+p commands</button>';
   $('#stPal').onclick=()=>openPalette('');$('#stAt').onclick=()=>{ta.focus();ta.value+=' @';renderMenu();};
 }
 function setRun(){const s=$('#send');s.classList.toggle('run',running);s.setAttribute('aria-label',running?'Interrupt':'Send');$('#work').style.display=running?'flex':'none';}
@@ -144,7 +146,13 @@ function handleLiveEvent(ev,sessionID){
   const p=ev.properties||{};
   if(p.sessionID&&p.sessionID!==sessionID)return;
   if(ev.type==='session.status'){
+    const statusValue=ev.properties?.status;
     const busy=dataApi.statusFromEvent(ev);
+    retryState=(errorApi&&statusValue&&statusValue.type==='retry')?statusValue:null;
+    if(errorApi&&!errorApi.isTitleError(ev)){
+      const line=errorApi.statusErrorLine(ev,{sessionID,now:Date.now()});
+      if(line)upsertConversationLine(line);
+    }
     if(busy!==undefined){running=busy;liveRunning=busy;setRun();status();updateSessionBusy(sessionID,busy);}
     return;
   }
@@ -191,7 +199,15 @@ function applyConversation(loaded){
   currentSession=loaded.session;currentSessionID=loaded.session?.id||currentSessionID;
   $('#title').textContent=loaded.session?.title||loaded.session?.slug||'Session';
   applyGoal(loaded.goal);
-  running=!!loaded.busy;liveRunning=running;setRun();status();
+  // Après redémarrage serveur, un statut « busy » sans flux live est stale : on affiche au repos.
+  const serverStatus=loaded.status;
+  if(errorApi&&serverStatus&&errorApi.isStaleBusy(serverStatus,!!liveSource)){
+    running=false;liveRunning=false;
+  }else{
+    running=!!loaded.busy;liveRunning=running;
+  }
+  retryState=(errorApi&&serverStatus&&serverStatus.type==='retry')?serverStatus:null;
+  setRun();status();
   liveMessages=Array.isArray(loaded.messages)?[...loaded.messages]:[];
   liveRoles={...(loaded.roles||{})};
   renderConversation(loaded.lines||[]);
@@ -536,6 +552,8 @@ async function realSend(v,steer){
   }catch(e){console.error(e);toast('Envoi impossible');}
 }
 async function interruptAgent(){
+  // Annule aussi un retry programmé : abort serveur puis retour immédiat au repos.
+  const wasRetry=!!retryState;retryState=null;
   if(!currentSessionID||(!composerApi&&!configApi)){
     running=false;liveRunning=false;setRun();stopComposerPolling();status();toast('Interrupted');return;
   }
@@ -543,7 +561,15 @@ async function interruptAgent(){
     if(composerApi)await composerApi.abortSession(currentSessionID);
     else await configApi.abortSession(currentSessionID);
   }catch(e){console.error(e);toast('Interruption impossible');}
-  running=false;liveRunning=false;setRun();stopComposerPolling();status();toast('Interrupted');
+  running=false;liveRunning=false;setRun();stopComposerPolling();status();toast(wasRetry?'Retry cancelled':'Interrupted');
+}
+/* Bouton « Choose another model » dans la conversation : ouvre le menu modèle. */
+col.addEventListener('click',e=>{
+  if(!e.target.closest('[data-choose-model]'))return;
+  e.preventDefault();openModelPicker();
+});
+function openModelPicker(){
+  const b=$('#selM');if(!b)return;b.click();
 }
 async function realInterrupt(){await interruptAgent();}
 async function submit(mode='send'){
@@ -618,7 +644,8 @@ if(innerWidth<1360)app.classList.remove('rp');
 async function bootData(){
   if(DEMO)return true;
   try{
-    const [data,composer,config]=await Promise.all([import('/ui/data.js'),import('/ui/composer.js'),import('/ui/config-logs.js')]);
+    const [data,composer,config,errors]=await Promise.all([import('/ui/data.js'),import('/ui/composer.js'),import('/ui/config-logs.js'),import('/ui/session-error.js')]);
+    errorApi=errors;
     dataApi=data;composerApi=composer;configApi=config;
     const caps=await configApi.loadCapabilities().catch(()=>({canSteer:false}));canSteer=!!caps.canSteer;
     const [workspaces,composerConfig]=await Promise.all([dataApi.loadSidebarData(),composerApi.loadComposerConfig()]);
