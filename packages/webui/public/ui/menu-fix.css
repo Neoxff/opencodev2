@@ -1,0 +1,27 @@
+/*
+ * menu-fix.css — exception de style AUTORISÉE, limitée aux menus du composeur
+ * (agent / modèle / variante) et au menu slash. Chargée uniquement par ui.js.
+ * Aucune règle existante de ui.css n'est modifiée : uniquement des ajouts ciblés.
+ *
+ * Ligne par ligne :
+ * 1. .pop : hauteur plafonnée à 60 % du viewport, défilement vertical interne,
+ *    débordement horizontal coupé, largeur contenue dans celle du composeur.
+ * 2. .pop .pop-search : le champ reprend .sfilter (barre latérale) ; on fixe sa largeur.
+ * 3. .pop .mi : ligne sans débordement.
+ * 4. .pop .mi b : nom tronqué avec points de suspension.
+ * 5. .pop .mi span.d : description tronquée de la même façon.
+ * 6. .pop .mi.act : contraste de la ligne sélectionnée au clavier.
+ * 7. .pop .mi.empty : message « No results » discret.
+ * 8. .menu : même plafond de hauteur pour le menu slash.
+ * 9. .pop.below : ouverture vers le bas quand la place au-dessus manque.
+ */
+
+/* 1 */ .pop{max-height:60vh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;box-sizing:border-box;width:max-content;max-width:100%}
+/* 2 */ .pop .pop-search{width:100%;box-sizing:border-box;margin:0 0 6px;flex:none}
+/* 3 */ .pop .mi{min-width:0;overflow:hidden}
+/* 4 */ .pop .mi b{min-width:0;max-width:52%;overflow:hidden;text-overflow:ellipsis}
+/* 5 */ .pop .mi span.d{min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis}
+/* 6 */ .pop .mi.act{background:var(--raise-2)}
+/* 7 */ .pop .mi.empty{color:var(--tx-3);cursor:default}
+/* 8 */ .menu{max-height:60vh;overflow-y:auto}
+/* 9 */ .pop.below{top:calc(100% + 6px);bottom:auto}

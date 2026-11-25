@@ -2,6 +2,15 @@ export interface ComposerAgent {
   name: string
   description: string
   mode: string
+  hidden?: boolean
+}
+
+export interface FilterChoice {
+  0?: string
+  1?: string
+  n?: string
+  d?: string
+  tag?: string
 }
 
 export interface ComposerModel {
@@ -28,7 +37,25 @@ export interface ComposerMetrics {
   tps?: number
 }
 
+export function projectAgentFields(agents: unknown): ComposerAgent[]
+export function isPrimaryAgent(agent: unknown): boolean
+export function orderAllAgents(agents: unknown): ComposerAgent[]
 export function orderAgents(agents: unknown): ComposerAgent[]
+export function primaryAgentsOrFallback(agents: unknown): ComposerAgent[]
+export function foldText(value: unknown): string
+export function filterChoices(list: unknown, query: string): FilterChoice[]
+export function moveActive(key: string, active: number, count: number): number
+export function isChatModel(model: unknown): boolean
+export function orderModels(models: unknown): ComposerModel[]
+export function defaultModelId(models: unknown, lastUsedID: string | null): string
+export function clearComposerConfigCache(): void
+export function loadComposerConfig(fetchImpl?: typeof fetch, options?: { refresh?: boolean }): Promise<{
+  agents: ComposerAgent[]
+  allAgents: ComposerAgent[]
+  models: ComposerModel[]
+  defaultModelID: string
+  canSteer: boolean
+}>
 export function sanitizeModels(providersPayload: unknown): ComposerModel[]
 export function variantsFor(models: unknown, id: string): string[]
 export function selectionFromSession(models: unknown, agents: unknown, session: unknown): ComposerSelection

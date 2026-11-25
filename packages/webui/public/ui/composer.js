@@ -7,19 +7,115 @@
  */
 
 const ORCHESTRATOR = "orchestrator"
+const OPENCODE = "opencode"
 
-export function orderAgents(agents) {
-  const list = Array.isArray(agents) ? agents : []
-  const clean = list
-    .filter((agent) => agent && typeof agent.name === "string" && agent.hidden !== true)
+/**
+ * GET /agent pèse ~3,1 Mo (prompts, permissions, options inclus). Le menu n'a besoin
+ * que de 4 champs : on projette dès la lecture, puis on met en cache pour ne jamais
+ * recharger à l'ouverture d'un menu.
+ */
+export function projectAgentFields(agents) {
+  return (Array.isArray(agents) ? agents : [])
+    .filter((agent) => agent && typeof agent.name === "string")
     .map((agent) => ({
       name: agent.name,
       description: typeof agent.description === "string" ? agent.description : "",
       mode: typeof agent.mode === "string" ? agent.mode : "",
+      hidden: agent.hidden === true,
     }))
+}
+
+/** Règle retenue (validée sur GET /agent) : mode primary|all ET hidden !== true. */
+export function isPrimaryAgent(agent) {
+  return Boolean(
+    agent && typeof agent.name === "string" && agent.hidden !== true &&
+      (agent.mode === "primary" || agent.mode === "all"),
+  )
+}
+
+/** Tous les agents non cachés, tous modes confondus — pour /subagent. */
+export function orderAllAgents(agents) {
+  return projectAgentFields(agents).filter((agent) => agent.hidden !== true)
+}
+
+export function orderAgents(agents) {
+  const clean = orderAllAgents(agents).filter(isPrimaryAgent)
   const first = clean.find((agent) => agent.name === ORCHESTRATOR)
   if (!first) return clean
   return [first, ...clean.filter((agent) => agent.name !== ORCHESTRATOR)]
+}
+
+/** Repli si un serveur n'expose pas `mode` : tout agent non caché est principal. */
+export function primaryAgentsOrFallback(agents) {
+  const all = orderAllAgents(agents)
+  return all.some((agent) => agent.mode) ? orderAgents(all) : all
+}
+
+/** Normalisation pour recherche insensible casse/accents. */
+export function foldText(value) {
+  return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+}
+
+/** Filtre [nom, description] ou {n, d} sur nom ET description. */
+export function filterChoices(list, query) {
+  const q = foldText(query).trim()
+  const arr = Array.isArray(list) ? list : []
+  if (!q) return arr.slice()
+  return arr.filter((x) => {
+    const name = Array.isArray(x) ? x[0] : x?.n
+    const desc = Array.isArray(x) ? x[1] : x?.d
+    return foldText(name).includes(q) || foldText(desc).includes(q)
+  })
+}
+
+/** Navigation clavier dans une liste. */
+export function moveActive(key, active, count) {
+  if (!count) return 0
+  if (key === "ArrowDown") return (active + 1) % count
+  if (key === "ArrowUp") return (active - 1 + count) % count
+  return active
+}
+
+/**
+ * L'API /provider expose capabilities.toolcall et capabilities.output.text.
+ * Règle prudente : un modèle est de chat/outils si toolcall===true ET output.text===true.
+ * Si capabilities est absent, règle prudente de repli : on garde sauf motif explicite
+ * non-chat (tts/embed/prompt-guard/translate/whisper/magpie) dans id ou nom.
+ */
+export function isChatModel(model) {
+  if (!model || typeof model !== "object") return false
+  const caps = model.capabilities
+  if (caps && typeof caps === "object") {
+    const text = caps.output && typeof caps.output === "object" ? caps.output.text : undefined
+    return caps.toolcall === true && text === true
+  }
+  const label = `${model.id || ""} ${model.name || ""}`.toLowerCase()
+  return !/(tts|embed|prompt[- ]?guard|translatex?|whisper|magpie|transcri)/.test(label)
+}
+
+/** Opencode en premier (groupé), puis les autres fournisseurs groupés par ordre alphabétique. */
+export function orderModels(models) {
+  const list = (Array.isArray(models) ? models : []).filter(isChatModel)
+  const groups = new Map()
+  for (const model of list) {
+    const key = typeof model.providerID === "string" ? model.providerID : ""
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(model)
+  }
+  const keys = [...groups.keys()].sort((a, b) => {
+    if (a === OPENCODE) return -1
+    if (b === OPENCODE) return 1
+    return a.localeCompare(b)
+  })
+  return keys.flatMap((key) => groups.get(key))
+}
+
+/** Dernier modèle opencode utilisé s'il est valide, sinon premier modèle de chat opencode. */
+export function defaultModelId(models, lastUsedID) {
+  const opencode = orderModels(models).filter((model) => model.providerID === OPENCODE)
+  if (!opencode.length) return ""
+  const last = opencode.find((model) => model.id === lastUsedID)
+  return (last || opencode[0]).id
 }
 
 export function sanitizeModels(providersPayload, apiModels = []) {
@@ -42,6 +138,7 @@ export function sanitizeModels(providersPayload, apiModels = []) {
         variants,
         limit: model.limit && typeof model.limit === "object" ? { ...model.limit } : undefined,
         status: typeof model.status === "string" ? model.status : "",
+        capabilities: model.capabilities && typeof model.capabilities === "object" ? model.capabilities : undefined,
       })
     }
   }
@@ -60,6 +157,7 @@ export function sanitizeModels(providersPayload, apiModels = []) {
       variants,
       limit: model.limit && typeof model.limit === "object" ? { ...model.limit } : undefined,
       status: typeof model.status === "string" ? model.status : "",
+      capabilities: model.capabilities && typeof model.capabilities === "object" ? model.capabilities : undefined,
     })
   }
 
@@ -74,9 +172,14 @@ export function variantsFor(models, id) {
 
 export function selectionFromSession(models, agents, session) {
   const realAgents = Array.isArray(agents) ? agents : []
-  const realModels = Array.isArray(models) ? models : []
+  const realModels = orderModels(models)
   const agent = session?.agent && realAgents.some((item) => item.name === session.agent) ? session.agent : realAgents[0]?.name || ORCHESTRATOR
-  const model = realModels.find((item) => item.id === session?.model?.id) || realModels[0]
+  // Défaut opencode : dernier modèle utilisé s'il est valide, sinon premier modèle de chat opencode.
+  // Jamais un modèle TTS/embedding (déjà écartés par isChatModel/orderModels).
+  const used = session?.model?.id || session?.modelID || ""
+  const validUsed = realModels.find((item) => item.id === used && item.providerID === OPENCODE)
+  const firstOpencode = realModels.find((item) => item.providerID === OPENCODE)
+  const model = validUsed || firstOpencode || realModels.find((item) => item.id === used) || realModels[0]
   const choices = variantsFor(realModels, model?.id)
   const wanted = session?.model?.variant
   const variant = wanted && choices.includes(wanted) ? wanted : choices[0]
@@ -218,15 +321,35 @@ async function getJson(fetchImpl, path) {
   return response.json()
 }
 
-export async function loadComposerConfig(fetchImpl = fetch) {
+/**
+ * Cache du composeur : GET /agent (3,1 Mo) et /provider (8 Mo) ne sont lus qu'une fois.
+ * Le cache est conservé pour toute la session ; l'ouverture d'un menu ne recharge rien.
+ */
+let composerConfigCache = null
+
+export function clearComposerConfigCache() {
+  composerConfigCache = null
+}
+
+export async function loadComposerConfig(fetchImpl = fetch, options = {}) {
+  if (composerConfigCache && !options.refresh) return composerConfigCache
   const [agents, providers, health, doc] = await Promise.all([
     getJson(fetchImpl, "/agent"),
     getJson(fetchImpl, "/provider"),
     getJson(fetchImpl, "/global/health"),
     getJson(fetchImpl, "/doc"),
   ])
-  const models = sanitizeModels(providers)
-  return { agents: orderAgents(agents), models, canSteer: steerSupported(doc, health) }
+  // Projection immédiate : seuls name/mode/description/hidden survivent côté composeur.
+  const projected = projectAgentFields(agents)
+  const models = orderModels(sanitizeModels(providers))
+  composerConfigCache = {
+    agents: orderAgents(projected),
+    allAgents: orderAllAgents(projected),
+    models,
+    defaultModelID: defaultModelId(models, null),
+    canSteer: steerSupported(doc, health),
+  }
+  return composerConfigCache
 }
 
 async function getJsonOptional(fetchImpl, path, fallback) {
