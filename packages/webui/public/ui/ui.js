@@ -4,6 +4,17 @@ let composerApi=null,composerConfig=null,composerSelection=null,composerMetrics=
 const $=s=>document.querySelector(s);
 const ic=(n,c)=>'<svg class="i '+(c||'')+'"><use href="#'+n+'"/></svg>';
 const escText=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+/* Recherche insensible casse/accents : miroir local de composer.js (utilisé aussi en DEMO). */
+const foldText=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+const choicePair=x=>Array.isArray(x)?[x[0],x[1]||'']:[x?.n||'',x?.d||''];
+const filterChoices=(list,q)=>{const t=foldText(q).trim();const a=Array.isArray(list)?list:[];return t?a.filter(x=>choicePair(x).some(v=>foldText(v).includes(t))):a.slice();};
+const moveActive=(key,i,n)=>n?(key==='ArrowDown'?(i+1)%n:key==='ArrowUp'?(i-1+n)%n:i):0;
+/* Feuille de style isolée pour les menus : aucun fichier existant n'est modifié. */
+if(!document.querySelector('link[data-menu-fix]')){
+  const l=document.createElement('link');l.rel='stylesheet';l.dataset.menuFix='1';
+  const p=location.pathname;l.href=(p.endsWith('/')?p:p+'/')+'menu-fix.css';
+  document.head.appendChild(l);
+}
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const panel=$('#panel'),col=$('#col'),scroll=$('#scroll'),ta=$('#ta'),dock=$('#dock'),app=$('#app');
 let running=false,tab='conv',sel=null,timers=[];
@@ -327,6 +338,8 @@ $('#goalb').onclick=()=>{app.classList.add('rp');shut.goal=false;rp();};
 
 /* ---------- Sélecteurs de la barre du composeur ---------- */
 const AG=[['orchestrator','Coordonne les autres agents'],['plan','Lecture seule, enquête et plan'],['build','Écrit le code, une étape à la fois'],['designer','Documents de design'],['lean','Budgets et mesures'],['security','Audit et verdicts'],['product-manager','Critères et recette'],['release','Branches, PR, fusions']];
+/* SUB garde TOUS les agents (y compris sous-agents) pour /subagent ; AG ne contient que les principaux. */
+const SUB=AG.slice();
 const VA=[['max',''],['high',''],['medium',''],['low','']];
 const MO=[['Tidepool Alpha Free','OpenCode'],['Hy4 Flash Free','OpenCode'],['DeepSeek V4.1 Flash','OpenCode Go']];
 function setAgent(v){S.agent=v;if(!DEMO&&composerSelection)composerSelection={...composerSelection,agent:v};$('#vA').textContent=v;pops();status();}
@@ -343,17 +356,45 @@ function setModel(v){
   }
   pops();status();
 }
-function fillPop(pop,list,cur,set){pop.innerHTML=list.map(x=>'<div class="mi" data-v="'+x[0]+'"><b>'+x[0]+'</b><span class="d">'+(x[1]||'')+'</span>'+(x[0]===cur?ic('check','s ck'):'')+'</div>').join('');
-  pop.onclick=e=>{const it=e.target.closest('.mi');if(!it)return;e.stopPropagation();set(it.dataset.v);closePops();};}
+/* Menus agent / modèle / variante : recherche + navigation clavier, style du champ latéral. */
+function fillPop(pop,list,cur,set){
+  const st=pop._st||(pop._st={q:'',active:0});st.list=list;st.set=set;
+  st.draw=()=>{
+    const shown=filterChoices(st.list,st.q);st.shown=shown;
+    st.active=Math.min(st.active,Math.max(0,shown.length-1));
+    pop.innerHTML='<input class="sfilter on pop-search" type="search" placeholder="Search" aria-label="Search">'+(
+      shown.length?shown.map((x,k)=>'<div class="mi'+(k===st.active?' act':'')+'" data-k="'+k+'"><b>'+x[0]+'</b><span class="d">'+(x[1]||'')+'</span>'+(x[0]===cur?ic('check','s ck'):'')+'</div>').join('')
+        :'<div class="mi empty" role="status">No results</div>');
+    const inp=pop.querySelector('.pop-search');inp.value=st.q;
+    inp.onclick=e=>e.stopPropagation();inp.onmousedown=e=>e.stopPropagation();
+    inp.oninput=()=>{st.q=inp.value;st.active=0;st.draw();const n=pop.querySelector('.pop-search');if(n){n.value=st.q;n.focus();}};
+    inp.onkeydown=e=>{
+      if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();st.active=moveActive(e.key,st.active,shown.length);st.draw();const n=pop.querySelector('.pop-search');if(n)n.focus();return;}
+      if(e.key==='Enter'){e.preventDefault();const x=shown[st.active];if(x){e.stopPropagation();set(x[0]);}closePops();return;}
+      if(e.key==='Escape'){e.preventDefault();closePops();return;}
+    };
+    const a=pop.querySelector('.mi.act');if(a&&a.scrollIntoView)a.scrollIntoView({block:'nearest'});
+  };
+  pop.onclick=e=>{const it=e.target.closest('.mi[data-k]');if(!it)return;e.stopPropagation();const x=st.shown[+it.dataset.k];if(x){set(x[0]);closePops();}};
+  st.draw();
+}
 function pops(){fillPop($('#popA'),AG,S.agent,setAgent);fillPop($('#popV'),VA,S.variant,setVar);fillPop($('#popM'),MO,S.model,setModel);}
 function closePops(){document.querySelectorAll('.pop').forEach(p=>p.classList.remove('on'));document.querySelectorAll('.sel').forEach(s=>s.classList.remove('open'));}
-[['#selA','#popA'],['#selV','#popV'],['#selM','#popM']].forEach(([b,p])=>$(b).onclick=e=>{e.stopPropagation();const was=$(p).classList.contains('on');closePops();if(!was){$(p).classList.add('on');$(b).classList.add('open');}});
+/* Ouvre vers le bas si place insuffisante au-dessus, et plafonne la hauteur à l'espace réel. */
+function placePop(pop,btn){
+  const r=btn.getBoundingClientRect();const above=r.top-8,below=innerHeight-r.bottom-8;
+  const down=above<260&&below>above;pop.classList.toggle('below',down);
+  pop.style.maxHeight=Math.min(innerHeight*0.6,Math.max(120,(down?below:above)-4))+'px';
+}
+[['#selA','#popA'],['#selV','#popV'],['#selM','#popM']].forEach(([b,p])=>$(b).onclick=e=>{e.stopPropagation();const was=$(p).classList.contains('on');closePops();if(!was){$(p).classList.add('on');$(b).classList.add('open');placePop($(p),$(b));const st=$(p)._st;if(st){st.q='';st.active=0;}drawPop(p);const i=$(p).querySelector('.pop-search');if(i)i.focus();}});
+function drawPop(p){if(p._st&&p._st.draw)p._st.draw();}
 document.addEventListener('click',closePops);pops();
 
 function applyComposerConfig(config){
   if(DEMO||!config||!composerApi)return;
   composerConfig=config;canSteer=!!config.canSteer;
   AG.splice(0,AG.length,...config.agents.map(a=>[a.name,a.description]));
+  SUB.splice(0,SUB.length,...(config.allAgents||config.agents).map(a=>[a.name,a.description]));
   MO.splice(0,MO.length,...config.models.map(m=>[m.id,(m.name||m.id)+' · '+m.providerID]));
   composerSelection=composerApi.selectionFromSession(config.models,config.agents,null);
   S.agent=composerSelection.agent;S.variant=composerSelection.variant;S.model=composerSelection.modelID;S.ctx=0;S.tps=0;
@@ -447,7 +488,7 @@ const H={
  share:()=>toast('Lien de partage local copié (simulé)'),
  skills:()=>openDlg('<h3>Skills<kbd>Esc</kbd></h3>'+CMD.filter(c=>c.tag==='skill').map(c=>'<div class="krow"><span><b style="font-family:var(--mono);color:var(--tx)">'+c.n+'</b></span><span style="max-width:60%;text-align:right;color:var(--tx-3)">'+c.d+'</span></div>').join('')),
  status:()=>openDlg('<h3>Status<kbd>Esc</kbd></h3>'+[['Version','OpenCodev2 2.4.31'],['Server','http://127.0.0.1:4097'],['Repo','Neoxff/opencodev2 · main'],['Agent',S.agent],['Model',S.model+' · '+S.variant],['Context',S.ctx+'k / 1.0M'],['MCP',MCPS.filter(m=>m.on).length+'/'+MCPS.length+' connected'],['LSP','disabled']].map(x=>'<div class="krow"><span>'+x[0]+'</span><b style="font-weight:500;color:var(--tx)">'+x[1]+'</b></div>').join('')),
- subagent:()=>openDlg('<h3>Subagents<kbd>Esc</kbd></h3>'+AG.map(a=>'<div class="krow"><span><b style="color:var(--tx);font-weight:500">'+a[0]+'</b></span><span style="color:var(--tx-3)">'+a[1]+'</span></div>').join('')),
+ subagent:()=>openDlg('<h3>Subagents<kbd>Esc</kbd></h3>'+SUB.map(a=>'<div class="krow"><span><b style="color:var(--tx);font-weight:500">'+a[0]+'</b></span><span style="color:var(--tx-3)">'+a[1]+'</span></div>').join('')),
  themes:()=>openList('Switch theme',[['Noir pur','default'],['Noir contraste élevé',''],['Noir chaud','accent ambre']],null,n=>{document.documentElement.dataset.th=n.includes('contraste')?'contrast':n.includes('chaud')?'warm':'';toast('Theme : '+n);}),
  thinking:()=>{col.classList.toggle('think');toast(col.classList.contains('think')?'Thinking expanded':'Thinking collapsed');},
  timeline:()=>{const ms=[...col.querySelectorAll('.me,.p')];openList('Jump to message',ms.map((m,k)=>[m.textContent.slice(0,64),'#'+(k+1)]),null,n=>{const m=ms.find(x=>x.textContent.slice(0,64)===n);if(m)m.scrollIntoView({block:'center',behavior:'smooth'});});},
@@ -466,12 +507,12 @@ function runCmd(c,args){
 /* ---------- Menu slash (liste complète, défilante) ---------- */
 const AT=[['@packages/webui/src/app.tsx','file'],['@packages/webui/src/git-panel.tsx','file'],['@docs/design/20-ciel-etoile.md','file'],['@Ciel étoilé, Worker et canvas','session · 33m']];
 const menu=$('#menu');let items=[],ai=0;
-function menuFor(v){const m=/(^|\s)([\/@])([^\s]*)$/.exec(v);if(!m)return null;const q=(m[2]+m[3]).toLowerCase();
-  return m[2]==='/'?CMD.filter(x=>x.n.toLowerCase().includes(q)):AT.map(x=>({n:x[0],d:x[1],k:null})).filter(x=>x.n.toLowerCase().includes(q));}
+function menuFor(v){const m=/(^|\s)([\/@])([^\s]*)$/.exec(v);if(!m)return null;const q=m[2]+m[3];
+  return filterChoices(m[2]==='/'?CMD:AT.map(x=>({n:x[0],d:x[1],k:null})),q);}
 function renderMenu(){
   const r=menuFor(ta.value);if(!r){menu.classList.remove('on');items=[];return;}
   items=r;ai=Math.min(ai,Math.max(0,items.length-1));
-  menu.innerHTML=items.length?items.map((x,k)=>'<div class="mi'+(k===ai?' act':'')+'" data-k="'+k+'" role="option"><b>'+x.n+'</b><span class="d">'+x.d+'</span>'+(x.tag?'<em class="tag '+(x.tag==='mcp'?'mcp':'')+'">'+(x.tag==='mcp'?'MCP':'Skill')+'</em>':'')+'</div>').join(''):'<div class="empty">No matching command.</div>';
+  menu.innerHTML=items.length?items.map((x,k)=>'<div class="mi'+(k===ai?' act':'')+'" data-k="'+k+'" role="option"><b>'+x.n+'</b><span class="d">'+x.d+'</span>'+(x.tag?'<em class="tag '+(x.tag==='mcp'?'mcp':'')+'">'+(x.tag==='mcp'?'MCP':'Skill')+'</em>':'')+'</div>').join(''):'<div class="empty">No results</div>';
   menu.classList.add('on');const a=menu.querySelector('.act');if(a)a.scrollIntoView({block:'nearest'});
 }
 function pick(k){const x=items[k];if(!x)return;ta.value=ta.value.replace(/([\/@])[^\s]*$/,x.n+' ');menu.classList.remove('on');ta.focus();}
