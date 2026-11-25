@@ -15,10 +15,27 @@ if(!document.querySelector('link[data-menu-fix]')){
   const p=location.pathname;l.href=(p.endsWith('/')?p:p+'/')+'menu-fix.css';
   document.head.appendChild(l);
 }
+/* Feuille de style isolée pour Archived / Server / pièces jointes : aucun fichier existant n'est modifié. */
+if(!document.querySelector('link[data-menu-bas]')){
+  const l=document.createElement('link');l.rel='stylesheet';l.dataset.menuBas='1';
+  const p=location.pathname;l.href=(p.endsWith('/')?p:p+'/')+'menu-bas.css';
+  document.head.appendChild(l);
+}
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const panel=$('#panel'),col=$('#col'),scroll=$('#scroll'),ta=$('#ta'),dock=$('#dock'),app=$('#app');
 let running=false,tab='conv',sel=null,timers=[];
 let dataApi=null,configApi=null,currentSession=null,currentSessionID=null;
+/* Ces modules sont purs : même en « demo » ils servent à montrer les trois feuilles. */
+let archivedApi=null,serverApi=null,attachmentsApi=null,pendingFiles=[],fileChipsEl=null,fileErrEl=null;
+const menuBasReady=Promise.all([
+  import('/ui/archived-ui.js'),import('/ui/server-ui.js'),import('/ui/attachments-ui.js')
+]).then(([archived,server,attachments])=>{
+  archivedApi=archived;serverApi=server;attachmentsApi=attachments;return true;
+}).catch(e=>{console.error(e);return false;});
+const DEMO_ARCHIVED=[
+  {id:'a-2026-11-12',title:'Architecture du panneau gauche',time:{archived:Date.parse('2026-11-12T09:15:00Z')}},
+  {id:'a-2026-10-28',title:'Correctif dépôt divergent',time:{archived:Date.parse('2026-10-28T14:20:00Z')}}
+];
 let canSteer=false,configEditing=false,logTimer=null;
 let liveSource=null,liveSession=null,liveSeen=new Set(),liveIndex=0,liveMessages=[],liveRoles={},liveRunning=false;
 const lineIndexByKey=new Map();
@@ -104,12 +121,113 @@ function renderTree(){
     }
   });
 }
-function disableArchived(){
-  document.querySelectorAll('.fold').forEach(f=>{
-    if(!f.textContent.includes('Archived'))return;
-    f.title='bientôt';f.setAttribute('aria-disabled','true');
-    f.onclick=e=>{e.preventDefault();e.stopPropagation();toast('bientôt');};
+/* Remplace l'ancien état « bientôt » : Archived et Server ouvrent chacun leur feuille réelle. */
+function wireFootFolds(){
+  document.querySelectorAll('.foot .fold').forEach(f=>{
+    const label=f.textContent||'';
+    const kind=label.includes('Archived')?'archived':label.includes('Server')?'server':'';
+    if(!kind||f.dataset.mbWired)return;
+    f.dataset.mbWired='1';f.title='';f.removeAttribute('aria-disabled');
+    f.setAttribute('role','button');f.tabIndex=0;
+    const fire=e=>{e.preventDefault();e.stopPropagation();if(kind==='archived')void openArchived();else void openServer();};
+    f.onclick=fire;
+    f.onkeydown=e=>{if(e.key==='Enter'||e.key===' ')fire(e);};
   });
+}
+async function openArchived(){
+  openDlg('<h3>Archived sessions<kbd>Esc</kbd></h3><input class="in" id="aq" type="search" placeholder="Search archived sessions" aria-label="Search archived sessions"><div id="al" class="arch-list"></div>');
+  const input=$('#aq'),list=$('#al');let rows=[];
+  await menuBasReady;
+  try{
+    rows=!archivedApi?[]:DEMO?archivedApi.toArchivedRows(DEMO_ARCHIVED):await archivedApi.loadArchivedSessions();
+  }catch(e){console.error(e);toast('Archived sessions indisponibles');}
+  const close=()=>closeDlg();
+  const render=()=>{
+    const shown=archivedApi?archivedApi.filterArchived(rows,input.value):rows;
+    list.innerHTML=!rows.length?'<div class="empty">No archived sessions</div>'
+      :!shown.length?'<div class="empty">No results</div>'
+      :shown.map(r=>'<div class="mi arch-row" data-id="'+escHtml(r.id)+'" role="button" tabindex="0"><b>'+escHtml(r.title)+'</b><span class="d arch-date">'+escHtml(r.date)+'</span><button type="button" class="gb arch-un" data-un="'+escHtml(r.id)+'">Unarchive</button></div>').join('');
+  };
+  input.oninput=render;
+  list.onclick=async e=>{
+    const un=e.target.closest('[data-un]');
+    if(un){e.stopPropagation();
+      const id=un.dataset.un;
+      try{
+        if(!DEMO&&archivedApi)await archivedApi.unarchiveSession(id);
+        rows=rows.filter(r=>r.id!==id);render();
+        if(!DEMO&&dataApi){const ws=await dataApi.loadSidebarData();WS.splice(0,WS.length,...ws);wireFootFolds();renderTree();}
+        toast('Session désarchivée');
+      }catch(err){console.error(err);toast('Désarchivage impossible');}
+      return;
+    }
+    const row=e.target.closest('.arch-row[data-id]');if(!row)return;
+    const found=rows.find(r=>r.id===row.dataset.id);if(found)await openArchivedSession(found);
+  };
+  list.onkeydown=e=>{if((e.key==='Enter'||e.key===' ')&&e.target.classList.contains('arch-row')){e.preventDefault();e.target.click();}};
+  $('#dlg').onkeydown=e=>{if(e.key==='Escape')close();};
+  render();setTimeout(()=>input.focus(),0);
+}
+async function openArchivedSession(row){
+  closeDlg();stopComposerPolling();sel=null;currentSessionID=row.id;currentSession={id:row.id,title:row.title};
+  panel.classList.remove('is-welcome');setLift();$('#title').textContent=row.title;$('#goalb').style.opacity=1;renderTree();switchTab('conv',true);
+  if(DEMO||!dataApi){col.innerHTML='<div class="p">Session archivée : '+escHtml(row.title)+'</div>';return;}
+  try{
+    const loaded=await dataApi.loadConversation(row.id);applyConversation(loaded);
+    if(composerApi){const state=await composerApi.loadSessionState(row.id);applyComposerSession(state);}
+  }catch(e){console.error(e);toast('Session archivée indisponible');}
+}
+async function openServer(){
+  openDlg('<h3>Server<kbd>Esc</kbd></h3><div id="sb" class="srv"><div class="empty">Chargement…</div></div><div class="ga"><button type="button" class="gb" id="sclose">Close</button></div>');
+  $('#sclose').onclick=()=>closeDlg();
+  await menuBasReady;
+  const body=$('#sb');if(!body)return;
+  let snap=null;
+  try{
+    if(DEMO||!serverApi)snap={state:'demo',url:location.origin,port:location.port||'80',version:'2.4.31',sessions:1,stream:'disconnected',mcpConnected:0,mcp:MCPS.map(m=>({name:m[0],status:m[1]?'connected':'disabled'}))};
+    else snap=await serverApi.loadServerSnapshot(fetch,location.origin,!!liveSource&&liveSource.readyState===1);
+  }catch(e){console.error(e);}
+  if(!snap){body.innerHTML='<div class="empty">Server indisponible</div>';return;}
+  const pairs=[['State',snap.state],['URL',snap.url],['Port',snap.port],['Version',snap.version],['Sessions actives',snap.sessions],['Stream',snap.stream],['MCP',snap.mcpConnected+'/'+snap.mcp.length]];
+  body.innerHTML=pairs.map(p=>'<div class="krow"><span>'+escHtml(p[0])+'</span><b>'+escHtml(String(p[1]))+'</b></div>').join('')+
+    '<div class="srv-mcp">'+snap.mcp.map(m=>'<div class="mcpr">'+escHtml(m.name)+'<em>'+escHtml(m.status)+'</em></div>').join('')+'</div>';
+}
+function readFileAsDataUrl(file){
+  return new Promise(resolve=>{
+    const r=new FileReader();
+    r.onerror=()=>resolve('');
+    r.onload=()=>{const s=String(r.result||'');const i=s.indexOf(',');resolve(i<0?'':`data:${file.type||'application/octet-stream'};base64,${s.slice(i+1)}`);};
+    r.readAsDataURL(file);
+  });
+}
+function renderFileChips(){
+  if(!fileChipsEl)return;
+  fileChipsEl.style.display=pendingFiles.length?'flex':'none';
+  fileChipsEl.innerHTML=pendingFiles.map((f,i)=>'<span class="fchip" data-i="'+i+'"><b>'+escHtml(f.name)+'</b><em>'+escHtml(attachmentsApi?attachmentsApi.fileSizeLabel(f.size):String(f.size)+' B')+'</em><button type="button" aria-label="Retirer '+escHtml(f.name)+'">×</button></span>').join('');
+}
+function wireComposerPlus(){
+  const btn=$('.comp .round'),comp=$('.comp');if(!btn||!comp||btn.dataset.mbWired)return;
+  btn.dataset.mbWired='1';
+  const input=document.createElement('input');input.type='file';input.multiple=true;input.className='mb-file';input.hidden=true;input.style.display='none';input.setAttribute('aria-label','Add files');comp.appendChild(input);
+  fileErrEl=document.createElement('div');fileErrEl.id='ferr';fileErrEl.className='ferr';fileErrEl.style.display='none';fileErrEl.setAttribute('role','alert');ta.parentNode.insertBefore(fileErrEl,ta);
+  fileChipsEl=document.createElement('div');fileChipsEl.id='fchips';fileChipsEl.className='fchips';fileChipsEl.style.display='none';ta.parentNode.insertBefore(fileChipsEl,ta);
+  btn.onclick=()=>{input.value='';input.click();};
+  input.onchange=async()=>{
+    const files=Array.from(input.files||[]);input.value='';await menuBasReady;
+    const errors=[],accepted=[];
+    for(const file of files){
+      const problem=attachmentsApi?attachmentsApi.validateFile(file):'Module de pièces jointes indisponible';
+      if(problem){errors.push(problem);continue;}
+      const dataUrl=await readFileAsDataUrl(file);
+      if(!dataUrl){errors.push('Lecture impossible : '+file.name);continue;}
+      accepted.push({name:attachmentsApi.basename(file.name),size:file.size,mime:file.type||'application/octet-stream',dataUrl});
+    }
+    pendingFiles.push(...accepted);
+    if(fileErrEl)fileErrEl.textContent=errors.join(' · ');
+    renderFileChips();
+  };
+  fileChipsEl.onclick=e=>{const b=e.target.closest('button');if(!b)return;const chip=b.closest('.fchip');if(!chip)return;pendingFiles.splice(Number(chip.dataset.i),1);renderFileChips();};
+  renderFileChips();
 }
 sf.addEventListener('input',renderTree);
 $('#bSearch').onclick=()=>{sf.classList.toggle('on');if(sf.classList.contains('on'))sf.focus();else{sf.value='';renderTree();}};
@@ -552,7 +670,7 @@ async function ensureCurrentSession(){
   try{
     const created=await dataApi.createSession();
     const workspaces=await dataApi.loadSidebarData();
-    WS.splice(0,WS.length,...workspaces);disableArchived();renderTree();
+    WS.splice(0,WS.length,...workspaces);wireFootFolds();renderTree();
     const found=findMaquetteSession(created.id);
     if(found)openSession(found[0],found[1]);
     currentSessionID=created.id;
@@ -566,12 +684,21 @@ async function realSend(v,steer){
   const payload=composerApi?composerApi.buildPromptPayload(v,composerSelection||{},steer?'steer':'send')
     :configApi?configApi.buildPromptPayload(v,steer?{steer:true}:{})
     :{parts:[{type:'text',text:v}]};
+  /* Même chemin que `@ files` : des parties `file` avec data URL, jamais un chemin absolu. */
+  const fileParts=pendingFiles.map(f=>attachmentsApi?attachmentsApi.buildFilePart(f)
+    :{type:'file',mime:f.mime,filename:attachmentsApi.basename(f.name),url:f.dataUrl});
+  if(fileParts.length){
+    payload.parts=(Array.isArray(payload.parts)?payload.parts:[])
+      .filter(p=>p?.type!=='text'||String(p?.text||'').trim()).concat(fileParts);
+  }
   if(panel.classList.contains('is-welcome')){panel.classList.remove('is-welcome');setLift();$('#goalb').style.opacity=1;col.innerHTML='';}
   if(tab!=='conv')switchTab('conv',true);
   try{
     if(composerApi)await composerApi.sendPrompt(sid,payload);
     else if(configApi)await configApi.sendPrompt(sid,payload);
-    else await dataApi.sendPrompt(sid,v);
+    else if(!fileParts.length)await dataApi.sendPrompt(sid,v);
+    else throw new Error('Envoi de fichiers indisponible');
+    if(pendingFiles.length){pendingFiles=[];renderFileChips();if(fileErrEl)fileErrEl.textContent='';}
     running=true;liveRunning=true;setRun();status();
     if(composerApi)startComposerPolling(sid);
   }catch(e){console.error(e);toast('Envoi impossible');}
@@ -588,14 +715,14 @@ async function interruptAgent(){
 }
 async function realInterrupt(){await interruptAgent();}
 async function submit(mode='send'){
-  const v=ta.value.trim();if(!v)return;ta.value='';menu.classList.remove('on');
-  const first=v.split(/\s+/)[0],c=CMD.find(x=>x.n===first);
-  if(c){runCmd(c,v.slice(first.length).trim());return;}
+  const v=ta.value.trim();if(!v&&!pendingFiles.length)return;ta.value='';menu.classList.remove('on');
+  if(!pendingFiles.length){const first=v.split(/\s+/)[0],c=CMD.find(x=>x.n===first);
+    if(c){runCmd(c,v.slice(first.length).trim());return;}}
   await realSend(v,mode==='steer');
 }
 function send(){
   const v=ta.value.trim();
-  if(running&&!v){if(!DEMO)void interruptAgent();else{running=false;setRun();status();toast('Interrupted');}return;}
+  if(running&&!v&&!pendingFiles.length){if(!DEMO)void interruptAgent();else{running=false;setRun();status();toast('Interrupted');}return;}
   void submit('send');
 }
 function confirmDelete(){
@@ -615,6 +742,7 @@ async function deleteSelected(){
   }catch(e){console.error(e);toast('Suppression impossible');}
 }
 $('#newbtn').onclick=()=>H.new();
+$('#send').onclick=()=>send();
 $('#reopen').onclick=()=>{sel=null;renderTree();welcome();};
 
 /* ---------- Raccourcis clavier ---------- */
@@ -666,10 +794,10 @@ async function bootData(){
     WS.splice(0,WS.length,...workspaces);
     applyComposerConfig(composerConfig);
     canSteer=canSteer||!!composerConfig?.canSteer;
-    disableArchived();
     return true;
   }catch(e){console.error(e);toast('Données indisponibles');return false;}
 }
+wireFootFolds();wireComposerPlus();
 if(DEMO){renderTree();rp();welcome();}
 else void bootData().then(()=>{
   renderTree();rp();welcome();

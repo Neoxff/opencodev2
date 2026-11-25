@@ -1,0 +1,43 @@
+{
+  "capturedAt": "2026-11-25T22:05:11.621Z",
+  "archivedRows": [
+    "Café, été",
+    "2026-11-22",
+    "Unarchive",
+    "Rapport trimestriel",
+    "2026-11-20",
+    "Unarchive"
+  ],
+  "serverRows": [
+    "State",
+    "healthy",
+    "URL",
+    "http://127.0.0.1:4199",
+    "Port",
+    "4199",
+    "Version",
+    "2.4.31-capture",
+    "Sessions actives",
+    "0",
+    "Stream",
+    "disconnected",
+    "MCP",
+    "1/2",
+    "bad",
+    "failed",
+    "git",
+    "connected"
+  ],
+  "fileChips": "secret.txt\n16 B\n×",
+  "fileError": "Type refusé : application/x-msdownload (install.exe)",
+  "unarchivePatch": {
+    "url": "/session/a-cafe",
+    "body": "{\"time\":{\"archived\":null}}"
+  },
+  "promptFilePart": {
+    "type": "file",
+    "mime": "text/plain",
+    "filename": "secret.txt",
+    "url": "data:text/plain;base64,Y29udGVudSBkZSB0ZXN0Cg==…"
+  }
+}

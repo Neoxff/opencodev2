@@ -1,0 +1,40 @@
+/*
+ * menu-bas.css — exception de style AUTORISÉE, limitée aux trois feuilles ajoutées
+ * à la maquette /ui : liste Archived, feuille Server et pièces jointes du composeur.
+ * Chargée uniquement par ui.js via un <link data-menu-bas>. Aucune règle existante
+ * de ui.css n'est modifiée : ce fichier ne fait que des ajouts ciblés.
+ *
+ * Ligne par ligne :
+ * 1. .mb-file : champ de fichier natif, retiré du flux visuel mais toujours cliquable.
+ * 2. .fchips / .ferr : conteneurs vides invisibles, affichés seulement quand ils ont du contenu.
+ * 3. .fchips : pastilles alignées au-dessus du champ, avec retour à la ligne.
+ * 4. .fchip : pastille nom + taille + bouton de retrait.
+ * 5. .fchip b : nom tronqué, sans pousser la taille hors de la pastille.
+ * 6. .fchip em : taille en retrait, non tronquée.
+ * 7. .fchip button : cible de retrait discrète mais visible au survol.
+ * 8. .ferr : message d'erreur de taille/type, lisible sans quitter le composeur.
+ * 9. .arch-list : liste des sessions archivées, hauteur plafonnée et défilement interne.
+ * 10. .arch-row : ligne cliquable, pleine largeur, sans débordement.
+ * 11. .arch-row b : titre tronqué avec points de suspension.
+ * 12. .arch-date : date fixe à droite du titre.
+ * 13. .arch-un : bouton de désarchivage séparé du clic sur la ligne.
+ * 14. .srv : corps de la feuille Server, hauteur plafonnée et défilement interne.
+ * 15. .srv-mcp : liste des MCP, séparée des faits serveur.
+ */
+
+/* 1 */ .mb-file{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+/* 2 */ .fchips:empty,.ferr:empty{display:none}
+/* 3 */ .fchips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
+/* 4 */ .fchip{display:inline-flex;align-items:center;gap:7px;min-width:0;max-width:100%;height:28px;padding:0 6px 0 10px;border-radius:8px;border:1px solid var(--line-2);background:var(--raise);font-size:12px;color:var(--tx)}
+/* 5 */ .fchip b{min-width:0;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+/* 6 */ .fchip em{flex:none;font-style:normal;font-size:11.5px;color:var(--tx-3)}
+/* 7 */ .fchip button{flex:none;width:18px;height:18px;border-radius:5px;border:0;background:transparent;color:var(--tx-2);cursor:pointer;font-size:15px;line-height:1}
+/* 7 */ .fchip button:hover{background:var(--raise-2);color:var(--tx)}
+/* 8 */ .ferr{margin:0 0 8px;font-size:12px;color:#ffb4a8}
+/* 9 */ .arch-list{max-height:50vh;overflow:auto;overscroll-behavior:contain;margin-top:4px}
+/* 10 */ .arch-row{min-width:0;overflow:hidden}
+/* 11 */ .arch-row b{width:auto;max-width:none;flex:1 1 auto;font-family:var(--font)}
+/* 12 */ .arch-date{flex:none;color:var(--tx-3);font-size:11.5px}
+/* 13 */ .arch-un{flex:none;margin-left:8px}
+/* 14 */ .srv{max-height:60vh;overflow:auto;overscroll-behavior:contain}
+/* 15 */ .srv-mcp{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}

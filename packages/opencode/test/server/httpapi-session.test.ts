@@ -693,6 +693,13 @@ describe("session HttpApi", () => {
         })
         expect(response.status).toBe(200)
         expect((yield* json<Session.Info>(response)).time.archived).toBe(-1)
+
+        const unarchived = yield* requestJson<Session.Info>(pathFor(SessionPaths.update, { sessionID: session.id }), {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({ time: { archived: null } }),
+        })
+        expect(unarchived.time.archived).toBeUndefined()
       }),
     { git: true, config: { formatter: false, lsp: false } },
   )
