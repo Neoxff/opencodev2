@@ -1,0 +1,26 @@
+/*
+ * session-todos.css — exception de style AUTORISÉE, limitée à la section
+ * « Modified files » du panneau droit. Chargée uniquement par ui.js via un
+ * <link data-todos-fix>. Aucune règle existante de ui.css n'est modifiée.
+ *
+ * Ligne par ligne :
+ * 1. .mf .rh : en-tête de section aligné comme les autres sections du panneau.
+ * 2. .mf .rh .n : compteur de fichiers aligné à droite, chiffres tabulaires.
+ * 3. .mfrow : ligne de fichier, grille souple, hauteur conforme aux lignes maquette.
+ * 4. .mfrow .nm : nom de fichier en monospace, tronqué avec points de suspension.
+ * 5. .mfrow .pth : chemin relatif discret, tronqué lui aussi.
+ * 6. .mfrow .fp : badge créé/supprimé, seulement visible quand renseigné.
+ * 7. .mfrow .rt : compteurs +N/−N alignés à droite (classes .add/.del de la maquette).
+ * 8. .mfempty : message vide « No modified files » discret.
+ * 9. .todo.empty : message « No todos » discret, sans coche.
+ */
+
+/* 1 */ .mf .rh{letter-spacing:0}
+/* 2 */ .mf .rh .n{margin-left:auto;font-variant-numeric:tabular-nums}
+/* 3 */ .mfrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto auto;gap:8px;align-items:center;min-width:0;height:29.5px;font-size:12px;color:var(--tx-2);text-decoration:none;border-bottom:1px solid var(--line)}
+/* 4 */ .mfrow .nm{color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:11.8px}
+/* 5 */ .mfrow .pth{color:var(--tx-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:11px}
+/* 6 */ .mfrow .fp{font-size:10px;color:var(--amber)}.mfrow .fp:empty{display:none}
+/* 7 */ .mfrow .rt{display:flex;gap:8px;justify-content:flex-end;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* 8 */ .mfempty{font-size:12px;color:var(--tx-3);padding:4px 0}
+/* 9 */ .todo.empty{color:var(--tx-3)}.todo.empty .bx{display:none}

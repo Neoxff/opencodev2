@@ -5,10 +5,17 @@ const $=s=>document.querySelector(s);
 const ic=(n,c)=>'<svg class="i '+(c||'')+'"><use href="#'+n+'"/></svg>';
 const escText=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+/* Feuille de style isolée de la section Modified files : aucun fichier existant n'est modifié. */
+if(!document.querySelector('link[data-todos-fix]')){
+  const l=document.createElement('link');l.rel='stylesheet';l.dataset.todosFix='1';
+  const p=location.pathname;l.href=(p.endsWith('/')?p:p+'/')+'session-todos.css';
+  document.head.appendChild(l);
+}
 const panel=$('#panel'),col=$('#col'),scroll=$('#scroll'),ta=$('#ta'),dock=$('#dock'),app=$('#app');
 let running=false,tab='conv',sel=null,timers=[];
 let dataApi=null,configApi=null,currentSession=null,currentSessionID=null;
 let canSteer=false,configEditing=false,logTimer=null;
+let todosApi=null,liveTodos=[],liveDiffs=[];
 let liveSource=null,liveSession=null,liveSeen=new Set(),liveIndex=0,liveMessages=[],liveRoles={},liveRunning=false;
 const lineIndexByKey=new Map();
 
@@ -156,7 +163,11 @@ function handleLiveEvent(ev,sessionID){
     }
     return;
   }
-  if(ev.type==='todo.updated'){applyGoal(dataApi.goalFromSession(currentSession,p.todos||[]));return;}
+  if(ev.type==='todo.updated'){
+    liveTodos=Array.isArray(p.todos)?p.todos:[];
+    applyGoal(dataApi.goalFromSession(currentSession,liveTodos));
+    rp();return;
+  }
   if(ev.type==='message.updated'){
     const info=p.info||{};
     if(info.id){
@@ -173,7 +184,13 @@ function handleLiveEvent(ev,sessionID){
     for(const line of dataApi.eventToLines(ev,{sessionID,roles:liveRoles,queued}))upsertConversationLine(line);
     return;
   }
-  if(ev.type==='session.diff'||ev.type==='file.edited'){
+  if(ev.type==='session.diff'){
+    if(Array.isArray(p.diff))liveDiffs=p.diff;
+    rp();
+    for(const line of dataApi.eventToLines(ev,{sessionID,roles:liveRoles}))upsertConversationLine(line);
+    return;
+  }
+  if(ev.type==='file.edited'){
     for(const line of dataApi.eventToLines(ev,{sessionID,roles:liveRoles}))upsertConversationLine(line);
   }
 }
@@ -190,6 +207,9 @@ function openLiveStream(sessionID){
 function applyConversation(loaded){
   currentSession=loaded.session;currentSessionID=loaded.session?.id||currentSessionID;
   $('#title').textContent=loaded.session?.title||loaded.session?.slug||'Session';
+  // Nouvelle session : on remplace entièrement les listes, rien n'est conservé de la précédente.
+  liveTodos=Array.isArray(loaded.todos)?loaded.todos:[];
+  liveDiffs=Array.isArray(loaded.diffs)?loaded.diffs:[];
   applyGoal(loaded.goal);
   running=!!loaded.busy;liveRunning=running;setRun();status();
   liveMessages=Array.isArray(loaded.messages)?[...loaded.messages]:[];
@@ -304,8 +324,16 @@ async function renderRealLogs(){
 /* ---------- Panneau droit : Goal, Context, MCP, LSP, Todo ---------- */
 const GOAL={st:'pending',dod:['Six états du panneau Dépôt testés','Aucun nouveau test en échec','Fond noir pur partout','Verre limité à 2 surfaces','Rapport avec preuves'],oos:['Thème clair','Rust pour le ciel','Synchronisation automatique amont','Rendu markdown en Rust']};
 const MCPS=[['chrome-devtools',1],['context7',1],['file-system',1],['firecrawl',1],['git',1],['github',1],['kubernetes',1],['mcp-control',1],['memory',1],['openapi',1],['postgres',1],['puppeteer',0],['sandbox',1],['sequential-thinking',1],['shell',1],['sqlite',1],['video-analyzer',1],['web-browser',0],['web-search',1]].map(x=>({n:x[0],on:!!x[1]}));
-const TODO=[['[RESEARCH] Research uncertainties; load applicable skills before acting.','dn'],['Lot sûr : valider + fusionner #8 docs/prerequis-design-v2','ip'],['Lot sûr : valider + fusionner #9 fix/depot-divergent',''],['Lot sûr : valider + fusionner #10 feat/tokens',''],['Lot sûr : valider + fusionner #11 feat/mouvement',''],['Lot sûr : valider + fusionner #18 feat/garde-fous-memoire',''],['Rapport final : hash main, ruleset, PR fusionnées, exclusions justifiées',''],['[CLOSE] Verify quality; retain','']];
+/* En DEMO, la liste statique de la maquette reste intacte (référence ui:diff).
+   Hors DEMO, les todos et fichiers viennent exclusivement de la session ouverte. */
+const TODO_DEMO=[['[RESEARCH] Research uncertainties; load applicable skills before acting.','dn'],['Lot sûr : valider + fusionner #8 docs/prerequis-design-v2','ip'],['Lot sûr : valider + fusionner #9 fix/depot-divergent',''],['Lot sûr : valider + fusionner #10 feat/tokens',''],['Lot sûr : valider + fusionner #11 feat/mouvement',''],['Lot sûr : valider + fusionner #18 feat/garde-fous-memoire',''],['Rapport final : hash main, ruleset, PR fusionnées, exclusions justifiées',''],['[CLOSE] Verify quality; retain','']];
 const shut={};
+function todoSection(sec){
+  if(DEMO)return sec('todo','Todo','',TODO_DEMO.map(t=>'<div class="todo '+t[1]+'"><span class="bx"></span><span>'+t[0]+'</span></div>').join(''));
+  if(!todosApi)return '';
+  return sec('todo','Todo','',todosApi.todoHtml(liveTodos))+
+         todosApi.modifiedFilesHtml(liveDiffs,currentSessionID||'');
+}
 function rp(){
   const sec=(id,h,n,body)=>'<div class="rs'+(shut[id]?' shut':'')+'" data-id="'+id+'"><div class="rh">'+ic('down','s c')+'<b>'+h+'</b>'+(n?'<span class="n">'+n+'</span>':'')+'</div><div class="rb">'+body+'</div></div>';
   const g=GOAL;
@@ -317,7 +345,7 @@ function rp(){
      '<div class="kv"><span>'+S.ctx+'k tokens</span><b>'+Math.round(S.ctx/10)+'% used</b></div><div class="bar"><i style="transform:scaleX('+Math.min(1,S.ctx/1000)+')"></i></div><div class="kv"><span>Cost</span><b>$0.00 (estimated)</b></div>')+
    sec('mcp','MCP',mc+'/'+MCPS.length,MCPS.map(m=>'<div class="mcpr'+(m.on?'':' off')+'">'+m.n+'<em>'+(m.on?'Connected':'Disabled')+'</em></div>').join(''))+
    sec('lsp','LSP','','<div class="mcpr off">LSPs are disabled</div>')+
-   sec('todo','Todo','',TODO.map(t=>'<div class="todo '+t[1]+'"><span class="bx"></span><span>'+t[0]+'</span></div>').join(''))+
+   todoSection(sec)+
    '<div class="rfoot"><div><b>~/Documents/</b>opencodev2web:main</div><div>• Opencodev2 2.4.31</div></div>';
   document.querySelectorAll('.rh').forEach(h=>h.onclick=()=>{const id=h.parentNode.dataset.id;shut[id]=!shut[id];rp();});
   document.querySelectorAll('.gb').forEach(b=>b.onclick=()=>H['goal-'+b.dataset.g]());
@@ -618,7 +646,8 @@ if(innerWidth<1360)app.classList.remove('rp');
 async function bootData(){
   if(DEMO)return true;
   try{
-    const [data,composer,config]=await Promise.all([import('/ui/data.js'),import('/ui/composer.js'),import('/ui/config-logs.js')]);
+    const [data,composer,config,todos]=await Promise.all([import('/ui/data.js'),import('/ui/composer.js'),import('/ui/config-logs.js'),import('/ui/session-todos.js')]);
+    todosApi=todos;
     dataApi=data;composerApi=composer;configApi=config;
     const caps=await configApi.loadCapabilities().catch(()=>({canSteer:false}));canSteer=!!caps.canSteer;
     const [workspaces,composerConfig]=await Promise.all([dataApi.loadSidebarData(),composerApi.loadComposerConfig()]);

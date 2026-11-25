@@ -195,6 +195,7 @@ export async function loadConversation(sessionID, fetchImpl = fetch) {
     session,
     messages: messageList,
     diffs: Array.isArray(diffs) ? diffs : [],
+    todos: Array.isArray(todos) ? todos : [],
     status,
     busy,
     roles,
