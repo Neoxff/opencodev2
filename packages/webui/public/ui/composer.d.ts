@@ -28,7 +28,20 @@ export interface ComposerMetrics {
   tps?: number
 }
 
+export function isPrimaryAgent(agent: unknown): boolean
+export function orderAllAgents(agents: unknown): ComposerAgent[]
 export function orderAgents(agents: unknown): ComposerAgent[]
+export function primaryAgentsOrFallback(agents: unknown): ComposerAgent[]
+export function foldText(value: unknown): string
+export interface FilterChoice {
+  0?: string
+  1?: string
+  n?: string
+  d?: string
+  tag?: string
+}
+export function filterChoices(list: unknown, query: string): FilterChoice[]
+export function moveActive(key: string, active: number, count: number): number
 export function sanitizeModels(providersPayload: unknown): ComposerModel[]
 export function variantsFor(models: unknown, id: string): string[]
 export function selectionFromSession(models: unknown, agents: unknown, session: unknown): ComposerSelection

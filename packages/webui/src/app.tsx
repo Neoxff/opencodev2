@@ -87,7 +87,7 @@ import {
 } from "./settings"
 import { FolderPicker, Picker } from "./picker"
 import { FolderBrowser } from "./folder-browser"
-import { CrossIcon, FolderPlusIcon, GearIcon, PluginIcon, PlusIcon, SearchIcon, SendIcon } from "./icons"
+import { CrossIcon, FolderPlusIcon, GearIcon, ListIcon, PluginIcon, PlusIcon, SearchIcon, SendIcon } from "./icons"
 import { TrajectoryView } from "./trajectory-view"
 import {
   commandChoices,
@@ -130,6 +130,8 @@ import {
 import { GitPanel } from "./git-panel"
 import EcranAccueil from "./EcranAccueil"
 import RessourcesPanel from "./ressources-panel"
+import { RightPanel, type GoalAction } from "./right-panel"
+import { ServerSheet } from "./server-sheet"
 import { gitApi } from "./git-client"
 import {
   activityFromStatus,
@@ -430,6 +432,9 @@ export default function App() {
   const [headDraft, setHeadDraft] = createSignal("")
   // Configuration : lue seulement quand la feuille s'ouvre. Rien de tout cela ne s'affiche au repos.
   const [configOpen, setConfigOpen] = createSignal(false)
+  const [rightOpen, setRightOpen] = createSignal(false)
+  const [serverOpen, setServerOpen] = createSignal(false)
+  const [gitBranch, setGitBranch] = createSignal("")
   const [config, setConfig] = createSignal<{
     model?: unknown
     small_model?: unknown
@@ -940,6 +945,57 @@ export default function App() {
     await loadPlan(sessionID)
     return true
   }
+
+  /**
+   * Action du panneau droit — écrit le statut du contrat sur la route réelle `PATCH /session/{id}`.
+   * On repart du `goalState` brut, comme `saveContract`, pour ne pas effacer les autres champs.
+   */
+  const goalAction = async (action: GoalAction): Promise<boolean> => {
+    const sessionID = active()
+    const raw = rawGoal()
+    if (!sessionID || !raw || typeof raw !== "object") return false
+    const status: Record<GoalAction, string> = {
+      approve: "approved",
+      edit: "edited",
+      generate: "draft",
+      regenerate: "draft",
+      skip: "skipped",
+    }
+    const base = raw as Record<string, unknown>
+    const version = typeof base.version === "number" ? base.version : 0
+    const payload = {
+      ...base,
+      status: status[action],
+      source: "user",
+      version: version + 1,
+      updatedAt: Date.now(),
+    }
+    const result = await client.session
+      .update({
+        sessionID,
+        goalState: payload as Parameters<typeof client.session.update>[0]["goalState"],
+        ...scope(),
+      })
+      .catch(() => undefined)
+    if (!result) return false
+    await loadPlan(sessionID)
+    return true
+  }
+
+  /** Dossier du pied du panneau : le vrai dossier de travail, jamais une valeur de démonstration. */
+  const panelFolder = () => {
+    const raw = directory() || serverPath() || ""
+    const parts = raw.split(/[\\/]/).filter(Boolean)
+    return parts[parts.length - 1] ?? ""
+  }
+
+  createEffect(() => {
+    if (!rightOpen()) return
+    void gitApi
+      .status()
+      .then((status) => setGitBranch(status?.branch ?? ""))
+      .catch(() => setGitBranch(""))
+  })
 
   const loadMessages = async (sessionID: string) => {
     // Le plan se relit avec le fil : c'est au même moment qu'on en a besoin, et l'agent réécrit ses
@@ -1828,7 +1884,11 @@ export default function App() {
     // Échap ferme la feuille de configuration — un panneau modal qui ne se ferme qu'à la souris
     // piège celui qui l'a ouvert au clavier.
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setConfigOpen(false)
+      if (event.key === "Escape") {
+        setConfigOpen(false)
+        setServerOpen(false)
+        setRightOpen(false)
+      }
     }
     window.addEventListener("keydown", onKey)
     // Debounced search: the list endpoint takes `search`, so the server does the filtering.
@@ -2508,6 +2568,24 @@ export default function App() {
           <span class="foot-row">
             <button
               class="rail-button"
+              classList={{ active: rightOpen() }}
+              title="Goal definition: session details"
+              onClick={() => setRightOpen((open) => !open)}
+            >
+              <ListIcon size={16} />
+              <span>details</span>
+            </button>
+            <button
+              class="rail-button"
+              classList={{ active: serverOpen() }}
+              title="Server: repository and resources"
+              onClick={() => setServerOpen(true)}
+            >
+              <PluginIcon size={16} />
+              <span>server</span>
+            </button>
+            <button
+              class="rail-button"
               classList={{ active: configOpen() }}
               title="Settings: defaults, providers, agents, MCP"
               onClick={openConfig}
@@ -2518,6 +2596,22 @@ export default function App() {
           </span>
         </div>
       </aside>
+
+      <RightPanel
+        open={rightOpen()}
+        contract={contract()}
+        stats={stats()}
+        contextLimit={modelLimits()[composerModel()]}
+        mcp={mcp()}
+        todos={todos()}
+        folder={panelFolder()}
+        branch={gitBranch()}
+        version={health()?.version}
+        onGoalAction={goalAction}
+        onSaveContract={saveContract}
+      />
+
+      <ServerSheet open={serverOpen()} onClose={() => setServerOpen(false)} />
 
       {/* `busy` nomme l'état pour le CSS : c'est lui qui autorise un mouvement dans le fil (le
           curseur de la prose en cours), et rien au repos. */}

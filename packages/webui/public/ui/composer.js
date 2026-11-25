@@ -8,18 +8,71 @@
 
 const ORCHESTRATOR = "orchestrator"
 
-export function orderAgents(agents) {
+/**
+ * Agents utilisables comme agent principal du composeur.
+ * GET /agent expose `mode` : "primary" | "subagent" | "all".
+ * Règle retenue (validée sur /agent) : mode ∈ {primary, all} ET hidden !== true.
+ * Les sous-agents purs restent accessibles par /subagent (voir orderAllAgents).
+ */
+export function isPrimaryAgent(agent) {
+  return Boolean(
+    agent &&
+      typeof agent.name === "string" &&
+      agent.hidden !== true &&
+      (agent.mode === "primary" || agent.mode === "all"),
+  )
+}
+
+/** Tous les agents non cachés, tous modes confondus — utilisé par /subagent. */
+export function orderAllAgents(agents) {
   const list = Array.isArray(agents) ? agents : []
-  const clean = list
+  return list
     .filter((agent) => agent && typeof agent.name === "string" && agent.hidden !== true)
     .map((agent) => ({
       name: agent.name,
       description: typeof agent.description === "string" ? agent.description : "",
       mode: typeof agent.mode === "string" ? agent.mode : "",
     }))
+}
+
+export function orderAgents(agents) {
+  const clean = orderAllAgents(agents).filter(isPrimaryAgent)
   const first = clean.find((agent) => agent.name === ORCHESTRATOR)
   if (!first) return clean
   return [first, ...clean.filter((agent) => agent.name !== ORCHESTRATOR)]
+}
+
+/** Repli pour un serveur qui n'exposerait pas `mode` : tout agent non caché est principal. */
+export function primaryAgentsOrFallback(agents) {
+  const all = orderAllAgents(agents)
+  return all.some((agent) => agent.mode) ? orderAgents(all) : all
+}
+
+/** Normalise pour une recherche insensible à la casse et aux accents. */
+export function foldText(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+}
+
+/** Filtre une liste de choix [nom, description] ou {n, d} sur nom ET description. */
+export function filterChoices(list, query) {
+  const q = foldText(query).trim()
+  if (!q) return Array.isArray(list) ? list.slice() : []
+  return (Array.isArray(list) ? list : []).filter((x) => {
+    const name = Array.isArray(x) ? x[0] : x?.n
+    const desc = Array.isArray(x) ? x[1] : x?.d
+    return foldText(name).includes(q) || foldText(desc).includes(q)
+  })
+}
+
+/** Déplacement du curseur dans une liste (clavier). */
+export function moveActive(key, active, count) {
+  if (!count) return 0
+  if (key === "ArrowDown") return (active + 1) % count
+  if (key === "ArrowUp") return (active - 1 + count) % count
+  return active
 }
 
 export function sanitizeModels(providersPayload, apiModels = []) {
@@ -226,7 +279,7 @@ export async function loadComposerConfig(fetchImpl = fetch) {
     getJson(fetchImpl, "/doc"),
   ])
   const models = sanitizeModels(providers)
-  return { agents: orderAgents(agents), models, canSteer: steerSupported(doc, health) }
+  return { agents: orderAgents(agents), allAgents: orderAllAgents(agents), models, canSteer: steerSupported(doc, health) }
 }
 
 async function getJsonOptional(fetchImpl, path, fallback) {
