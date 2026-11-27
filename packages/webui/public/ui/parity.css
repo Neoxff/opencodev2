@@ -1,0 +1,17 @@
+/*
+ * parity.css — exception de style isolée pour la parité /ui ↔ TUI.
+ * Chargée uniquement hors de ?demo par ui.js ; aucune règle existante de ui.css n'est modifiée.
+ *
+ * Ligne par ligne :
+ * 1. .mcp-err : message d'erreur MCP, lisible sans laisser passer un secret.
+ * 2. .srv : corps de la feuille Server, défilant si la liste MCP est longue.
+ * 3. .srv-mcp : séparation visuelle entre les faits serveur et la liste MCP.
+ * 4. .mcpr.bad : état MCP anormal (failed / needs_auth / needs_client_registration).
+ * 5. .todo .cancelled : todo annulé, distinct d'un todo terminé.
+ */
+
+/* 1 */ .mcp-err{display:block;margin-top:2px;font-size:11px;line-height:1.35;color:#ffb4a8;white-space:normal}
+/* 2 */ .srv{max-height:58vh;overflow:auto;overscroll-behavior:contain}
+/* 3 */ .srv-mcp{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}
+/* 4 */ .mcpr.bad b,.mcpr.bad em{color:#ffb4a8}
+/* 5 */ .todo.cancelled span{text-decoration:line-through;color:var(--tx-3)}

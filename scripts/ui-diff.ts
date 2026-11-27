@@ -11,7 +11,8 @@ import { PNG } from "pngjs"
 
 const ROOT = process.cwd()
 const REFERENCE = join(ROOT, "docs/design/maquette-opencodev2-ui.html")
-const SERVED = "http://127.0.0.1:4096/ui?demo"
+const PORT = process.env.OPENCODE_SERVER_PORT ?? "4096"
+const SERVED = `http://127.0.0.1:${PORT}/ui?demo`
 const OUT = join(ROOT, "docs/design/captures/ui-diff")
 const VIEWPORT = { width: 1920, height: 1080 }
 const THRESHOLD = 0.005

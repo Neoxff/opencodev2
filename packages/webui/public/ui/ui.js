@@ -4,10 +4,17 @@ let composerApi=null,composerConfig=null,composerSelection=null,composerMetrics=
 const $=s=>document.querySelector(s);
 const ic=(n,c)=>'<svg class="i '+(c||'')+'"><use href="#'+n+'"/></svg>';
 const escText=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+/* Feuille isolée de parité : chargée seulement hors ?demo, aucune règle existante n'est touchée. */
+if(!DEMO&&!document.querySelector('link[data-parity]')){
+  const l=document.createElement('link');l.rel='stylesheet';l.dataset.parity='1';
+  const p=location.pathname;l.href=(p.endsWith('/')?p:p+'/')+'parity.css';
+  document.head.appendChild(l);
+}
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const panel=$('#panel'),col=$('#col'),scroll=$('#scroll'),ta=$('#ta'),dock=$('#dock'),app=$('#app');
 let running=false,tab='conv',sel=null,timers=[];
 let dataApi=null,configApi=null,currentSession=null,currentSessionID=null;
+let parityApi=null,liveMcp=[],liveCommands=[],livePanel=null,workspaceLimit=3;
 let canSteer=false,configEditing=false,logTimer=null;
 let liveSource=null,liveSession=null,liveSeen=new Set(),liveIndex=0,liveMessages=[],liveRoles={},liveRunning=false;
 const lineIndexByKey=new Map();
@@ -53,13 +60,14 @@ addEventListener('resize',setLift);
 function status(){
   if(!DEMO&&composerMetrics&&composerSelection){
     const parts=composerApi.statusParts(composerMetrics,composerSelection);
-    const hints=(running?'<span><kbd>esc</kbd> interrupt</span><span><kbd>enter</kbd> queue</span>'+(canSteer?'<span><kbd>alt+s</kbd> steer</span>':'<span>steer indisponible</span>'):'')+'<span><b>'+escText(parts.agent)+'</b> · '+escText(parts.model)+' · '+escText(parts.variant)+'</span><span>'+escText(parts.tokens)+'</span>';
+    const cost=livePanel?.context?.costText||'$0.00 (estimated)';
+    const hints=(running?'<span><kbd>esc</kbd> interrupt</span><span><kbd>enter</kbd> queue</span>'+(canSteer?'<span><kbd>alt+s</kbd> steer</span>':'<span>steer indisponible</span>'):'')+'<span><b>'+escText(parts.agent)+'</b> · '+escText(parts.model)+' · '+escText(parts.variant)+'</span><span>'+escText(parts.tokens)+'</span><span>'+escText(cost)+'</span>';
     $('#status').innerHTML=hints+'<span class="sp"></span><span>'+(parts.tps?escText(parts.tps):'')+'</span><button id="stAt">@ tag files</button><button id="stPal">ctrl+p commands</button>';
     $('#stPal').onclick=()=>openPalette('');$('#stAt').onclick=()=>{ta.focus();ta.value+=' @';renderMenu();};
     return;
   }
   const pct=Math.round(S.ctx/1000*100/1.0)/1;const p=Math.round(S.ctx/10)/1;
-  $('#status').innerHTML=(running?'<span><kbd>esc</kbd> interrupt</span><span><kbd>enter</kbd> queue</span><span><kbd>alt+s</kbd> steer</span>':'<span><b>'+S.agent+'</b> · '+S.model+' · '+S.variant+'</span><span>'+S.ctx+'k / 1.0M ('+Math.round(S.ctx/10)+'%)</span>')+'<span class="sp"></span><span>'+(running?S.tps+' tok/s':'')+'</span><button id="stAt">@ tag files</button><button id="stPal">ctrl+p commands</button>';
+  $('#status').innerHTML=(running?'<span><kbd>esc</kbd> interrupt</span><span><kbd>enter</kbd> queue</span><span><kbd>alt+s</kbd> steer</span>':'<span><b>'+S.agent+'</b> · '+S.model+' · '+S.variant+'</span><span>'+S.ctx+'k / 1.0M ('+Math.round(S.ctx/10)+'%)</span>')+(!DEMO&&livePanel?'<span>'+escText(livePanel.context.costText)+'</span>':'')+'<span class="sp"></span><span>'+(running?S.tps+' tok/s':'')+'</span><button id="stAt">@ tag files</button><button id="stPal">ctrl+p commands</button>';
   $('#stPal').onclick=()=>openPalette('');$('#stAt').onclick=()=>{ta.focus();ta.value+=' @';renderMenu();};
 }
 function setRun(){const s=$('#send');s.classList.toggle('run',running);s.setAttribute('aria-label',running?'Interrupt':'Send');$('#work').style.display=running?'flex':'none';}
@@ -80,7 +88,8 @@ function renderTree(){
   WS.forEach((w,wi)=>{
     if(q&&!w.n.toLowerCase().includes(q)&&!w.s.some(s=>s.t.toLowerCase().includes(q)))return;
     const f=document.createElement('div');f.className='fold'+(w.open||q?' open':'');
-    f.innerHTML=(w.s.length?ic('down','chev'):'<span class="chev"></span>')+ic('folder')+'<b>'+w.n+'</b><em>'+(w.more&&!w.s.length?w.more:w.t)+'</em>';
+    const em=!DEMO&&typeof w.c==='number'?w.c+' · '+w.t:(w.more&&!w.s.length?w.more:w.t);
+    f.innerHTML=(w.s.length?ic('down','chev'):'<span class="chev"></span>')+ic('folder')+'<b>'+w.n+'</b><em>'+em+'</em>';
     f.onclick=()=>{w.open=!w.open;renderTree();};tree.append(f);
     if(w.open||q){
       w.s.forEach((s,si)=>{
@@ -89,7 +98,7 @@ function renderTree(){
         d.innerHTML='<span>'+s.t+'</span>'+(s.busy?'<i class="busy"></i>':'')+'<em>'+s.m+'</em>';
         d.onclick=()=>openSession(wi,si);tree.append(d);
       });
-      if(w.more&&w.s.length){const m=document.createElement('div');m.className='more';m.textContent='read more ('+w.more+')';tree.append(m);}
+      if(w.more&&w.s.length){const m=document.createElement('div');m.className='more';m.textContent=DEMO?'read more ('+w.more+')':'Read more (+'+w.more+')';if(!DEMO)m.onclick=()=>{workspaceLimit=99;if(parityApi)void parityApi.loadParitySnapshot(fetch,workspaceLimit).then(s=>{liveMcp=s.mcp;liveCommands=s.commands;WS.splice(0,WS.length,...s.workspaces);refreshLiveData();}).catch(()=>toast('Chargement impossible'));};tree.append(m);}
     }
   });
 }
@@ -99,6 +108,90 @@ function disableArchived(){
     f.title='bientôt';f.setAttribute('aria-disabled','true');
     f.onclick=e=>{e.preventDefault();e.stopPropagation();toast('bientôt');};
   });
+}
+/* La feuille Server est la même source que le panneau : GET /mcp via parity.js. */
+async function openServerSheet(){
+  openDlg('<h3>Server<kbd>Esc</kbd></h3><div id="sv" class="srv"><div class="empty">Chargement…</div></div><div class="ga"><button type="button" class="gb" id="svc">Close</button></div>');
+  $('#svc').onclick=()=>closeDlg();
+  if(DEMO||!parityApi){$('#sv').innerHTML='<div class="empty">Server indisponible en démonstration</div>';return;}
+  try{
+    const s=await parityApi.loadServerSnapshot(fetch,location.origin);
+    const rows=[['State',s.state],['URL',s.url],['Port',s.port],['Version',s.version],['Sessions actives',s.sessions],['MCP',s.mcp.connected+'/'+s.mcp.total]];
+    $('#sv').innerHTML=rows.map(r=>'<div class="krow"><span>'+escHtml(r[0])+'</span><b>'+escHtml(String(r[1]))+'</b></div>').join('')+
+      '<div class="srv-mcp">'+(s.rows||liveMcp).map(mcpRowHtml).join('')+'</div>';
+  }catch(e){console.error(e);$('#sv').innerHTML='<div class="empty">Server indisponible</div>';}
+}
+function wireFootFolds(){
+  disableArchived();
+  if(DEMO)return;
+  document.querySelectorAll('.foot .fold').forEach(f=>{
+    if(!f.textContent.includes('Server')||f.dataset.parityWired)return;
+    f.dataset.parityWired='1';f.setAttribute('role','button');f.tabIndex=0;
+    const fire=e=>{e.preventDefault();e.stopPropagation();void openServerSheet();};
+    f.onclick=fire;f.onkeydown=e=>{if(e.key==='Enter'||e.key===' ')fire(e);};
+  });
+}
+function mcpRowHtml(m){
+  const bad=!['connected','disabled'].includes(m.status);
+  return '<div class="mcpr'+(m.status==='connected'?'':' off')+(bad?' bad':'')+'"><b>'+escHtml(m.name)+'</b><em>'+escHtml(m.label)+(m.error?'<span class="mcp-err">'+escHtml(m.error)+'</span>':'')+'</em></div>';
+}
+function refreshLiveData(){
+  if(DEMO||!parityApi)return;
+  CMD.splice(0,CMD.length,...CMD_BASE.map(c=>({...c})),...liveCommands.map(c=>({...c})));
+  rp();renderTree();status();
+}
+async function reloadWorkspaces(){
+  if(DEMO||!parityApi){const w=await dataApi.loadSidebarData();WS.splice(0,WS.length,...w);renderTree();return w;}
+  const snap=await parityApi.loadParitySnapshot(fetch,workspaceLimit);
+  liveMcp=snap.mcp;liveCommands=snap.commands;
+  WS.splice(0,WS.length,...snap.workspaces);refreshLiveData();return snap.workspaces;
+}
+async function refreshPanel(sessionID=currentSessionID){
+  if(DEMO||!parityApi)return;
+  try{
+    livePanel=await parityApi.loadPanelData(sessionID||'',fetch,composerMetrics||{});
+    if(livePanel.title)$('#title').textContent=livePanel.title;
+    applyGoal(livePanel.goal);rp();status();
+  }catch(e){console.error(e);}
+}
+function setGoalState(st){
+  if(livePanel)livePanel.goal={...livePanel.goal,st};
+  GOAL.st=st;app.classList.add('rp');rp();toast('Goal '+st);
+}
+async function openMcpDialog(){
+  if(DEMO||!parityApi){
+    const draw=()=>openDlg('<h3>Toggle MCPs<kbd>Esc</kbd></h3><div id="ml">'+DEMO_MCPS.map((m,k)=>'<div class="mi" data-k="'+k+'"><b>'+m.n+'</b><span class="d">'+(m.on?'Connected':'Disabled')+'</span><span class="sw'+(m.on?' on':'')+'"></span></div>').join('')+'</div>');
+    draw();
+    $('#ml').onclick=e=>{const it=e.target.closest('.mi');if(!it)return;const m=DEMO_MCPS[+it.dataset.k];m.on=!m.on;rp();const t=$('#dlg').scrollTop;draw();$('#dlg').scrollTop=t;$('#ml').onclick=arguments.callee;};
+    return;
+  }
+  const draw=()=>openDlg('<h3>Toggle MCPs<kbd>Esc</kbd></h3><div id="ml">'+liveMcp.map((m,k)=>'<div class="mi" data-k="'+k+'"><b>'+escHtml(m.name)+'</b><span class="d">'+escHtml(m.label)+(m.error?'<span class="mcp-err">'+escHtml(m.error)+'</span>':'')+'</span><span class="sw'+(m.status==='connected'?' on':'')+'"></span></div>').join('')+'</div>');
+  draw();
+  $('#ml').onclick=async e=>{
+    const it=e.target.closest('.mi');if(!it)return;
+    const m=liveMcp[+it.dataset.k];if(!m)return;
+    const connected=m.status==='connected';
+    try{
+      const res=await parityApi.toggleMcp(m.name,!connected);
+      liveMcp=res.rows;
+      const snap=await parityApi.loadParitySnapshot(fetch,workspaceLimit);
+      liveCommands=snap.commands;refreshLiveData();
+      const t=$('#dlg').scrollTop;draw();$('#dlg').scrollTop=t;
+      toast('MCP '+m.name+' '+(connected?'déconnecté':'connecté'));
+    }catch(err){console.error(err);toast('Bascule MCP impossible');}
+  };
+}
+async function openStatusDialog(){
+  if(DEMO||!parityApi){
+    openDlg('<h3>Status<kbd>Esc</kbd></h3>'+[['Version','OpenCodev2 2.4.31'],['Server','http://127.0.0.1:4097'],['Repo','Neoxff/opencodev2 · main'],['Agent',S.agent],['Model',S.model+' · '+S.variant],['Context',S.ctx+'k / 1.0M'],['MCP',DEMO_MCPS.filter(m=>m.on).length+'/'+DEMO_MCPS.length+' connected'],['LSP','disabled']].map(x=>'<div class="krow"><span>'+x[0]+'</span><b style="font-weight:500;color:var(--tx)">'+x[1]+'</b></div>').join(''));
+    return;
+  }
+  try{
+    const s=await parityApi.loadServerSnapshot(fetch,location.origin);
+    const p=livePanel||{context:{costText:'$0.00 (estimated)',percent:0},folder:'—',branch:'—',version:s.version};
+    const rows=[['Version',p.version||s.version],['Server',s.url+':'+s.port],['Repo',p.folder+':'+p.branch],['Agent',S.agent],['Model',S.model+' · '+S.variant],['Context',(p.context.percent||0)+'% · '+p.context.costText],['MCP',s.mcp.connected+'/'+s.mcp.total+' connected'],['LSP',(p.lsp||[]).length]];
+    openDlg('<h3>Status<kbd>Esc</kbd></h3>'+rows.map(x=>'<div class="krow"><span>'+escHtml(x[0])+'</span><b style="font-weight:500;color:var(--tx)">'+escHtml(String(x[1]))+'</b></div>').join(''));
+  }catch(e){console.error(e);toast('Statut indisponible');}
 }
 sf.addEventListener('input',renderTree);
 $('#bSearch').onclick=()=>{sf.classList.toggle('on');if(sf.classList.contains('on'))sf.focus();else{sf.value='';renderTree();}};
@@ -156,7 +249,7 @@ function handleLiveEvent(ev,sessionID){
     }
     return;
   }
-  if(ev.type==='todo.updated'){applyGoal(dataApi.goalFromSession(currentSession,p.todos||[]));return;}
+  if(ev.type==='todo.updated'){if(!DEMO&&parityApi)void refreshPanel(sessionID);else applyGoal(dataApi.goalFromSession(currentSession,p.todos||[]));return;}
   if(ev.type==='message.updated'){
     const info=p.info||{};
     if(info.id){
@@ -198,6 +291,7 @@ function applyConversation(loaded){
   timers.forEach(clearInterval);timers=[];
   tick();timers.push(setInterval(tick,1000));
   openLiveStream(currentSessionID);
+  void refreshPanel(currentSessionID);
 }
 async function openRealSession(wi,si){
   const s=WS[wi]?.s[si];if(!s?.id||!dataApi)return;
@@ -303,24 +397,46 @@ async function renderRealLogs(){
 
 /* ---------- Panneau droit : Goal, Context, MCP, LSP, Todo ---------- */
 const GOAL={st:'pending',dod:['Six états du panneau Dépôt testés','Aucun nouveau test en échec','Fond noir pur partout','Verre limité à 2 surfaces','Rapport avec preuves'],oos:['Thème clair','Rust pour le ciel','Synchronisation automatique amont','Rendu markdown en Rust']};
-const MCPS=[['chrome-devtools',1],['context7',1],['file-system',1],['firecrawl',1],['git',1],['github',1],['kubernetes',1],['mcp-control',1],['memory',1],['openapi',1],['postgres',1],['puppeteer',0],['sandbox',1],['sequential-thinking',1],['shell',1],['sqlite',1],['video-analyzer',1],['web-browser',0],['web-search',1]].map(x=>({n:x[0],on:!!x[1]}));
+/* Liste figée réservée à ?demo : en réel, MCPS vient exclusivement de GET /mcp via parity.js. */
+const DEMO_MCPS=[['chrome-devtools',1],['context7',1],['file-system',1],['firecrawl',1],['git',1],['github',1],['kubernetes',1],['mcp-control',1],['memory',1],['openapi',1],['postgres',1],['puppeteer',0],['sandbox',1],['sequential-thinking',1],['shell',1],['sqlite',1],['video-analyzer',1],['web-browser',0],['web-search',1]].map(x=>({n:x[0],on:!!x[1]}));
 const TODO=[['[RESEARCH] Research uncertainties; load applicable skills before acting.','dn'],['Lot sûr : valider + fusionner #8 docs/prerequis-design-v2','ip'],['Lot sûr : valider + fusionner #9 fix/depot-divergent',''],['Lot sûr : valider + fusionner #10 feat/tokens',''],['Lot sûr : valider + fusionner #11 feat/mouvement',''],['Lot sûr : valider + fusionner #18 feat/garde-fous-memoire',''],['Rapport final : hash main, ruleset, PR fusionnées, exclusions justifiées',''],['[CLOSE] Verify quality; retain','']];
 const shut={};
 function rp(){
   const sec=(id,h,n,body)=>'<div class="rs'+(shut[id]?' shut':'')+'" data-id="'+id+'"><div class="rh">'+ic('down','s c')+'<b>'+h+'</b>'+(n?'<span class="n">'+n+'</span>':'')+'</div><div class="rb">'+body+'</div></div>';
-  const g=GOAL;
-  const goalBody=(g.st==='pending'?'':'<div class="kv"><span>Status</span><b>'+g.st+'</b></div>')+'<div class="gh">Definition of done</div>'+g.dod.map(x=>'<div class="gl">'+x+'</div>').join('')+'<div class="gh">Out of scope</div>'+g.oos.map(x=>'<div class="gl">'+x+'</div>').join('')+'<div class="ga"><button class="gb" data-g="approve">Approve</button><button class="gb" data-g="edit">Edit</button><button class="gb" data-g="regenerate">Regenerate</button><button class="gb" data-g="skip">Skip</button></div>';
-  const mc=MCPS.filter(m=>m.on).length;
+  const bind=()=>{
+    document.querySelectorAll('.rh').forEach(h=>h.onclick=()=>{const id=h.parentNode.dataset.id;shut[id]=!shut[id];rp();});
+    document.querySelectorAll('.gb').forEach(b=>b.onclick=()=>H['goal-'+b.dataset.g]());
+  };
+  if(DEMO){
+    const g=GOAL;
+    const goalBody=(g.st==='pending'?'':'<div class="kv"><span>Status</span><b>'+g.st+'</b></div>')+'<div class="gh">Definition of done</div>'+g.dod.map(x=>'<div class="gl">'+x+'</div>').join('')+'<div class="gh">Out of scope</div>'+g.oos.map(x=>'<div class="gl">'+x+'</div>').join('')+'<div class="ga"><button class="gb" data-g="approve">Approve</button><button class="gb" data-g="edit">Edit</button><button class="gb" data-g="regenerate">Regenerate</button><button class="gb" data-g="skip">Skip</button></div>';
+    const mc=DEMO_MCPS.filter(m=>m.on).length;
+    $('#rpanel').innerHTML=
+     sec('goal','Goal definition','<span class="pill">DOD('+g.dod.length+')</span> <span class="pill">OOS('+g.oos.length+')</span>',goalBody)+
+     sec('ctx','Context','',
+       '<div class="kv"><span>'+S.ctx+'k tokens</span><b>'+Math.round(S.ctx/10)+'% used</b></div><div class="bar"><i style="transform:scaleX('+Math.min(1,S.ctx/1000)+')"></i></div><div class="kv"><span>Cost</span><b>$0.00 (estimated)</b></div>')+
+     sec('mcp','MCP',mc+'/'+DEMO_MCPS.length,DEMO_MCPS.map(m=>'<div class="mcpr'+(m.on?'':' off')+'">'+m.n+'<em>'+(m.on?'Connected':'Disabled')+'</em></div>').join(''))+
+     sec('lsp','LSP','','<div class="mcpr off">LSPs are disabled</div>')+
+     sec('todo','Todo','',TODO.map(t=>'<div class="todo '+t[1]+'"><span class="bx"></span><span>'+t[0]+'</span></div>').join(''))+
+     '<div class="rfoot"><div><b>~/Documents/</b>opencodev2web:main</div><div>• Opencodev2 2.4.31</div></div>';
+    bind();return;
+  }
+  const p=livePanel||{goal:{st:'pending',dod:[],oos:[]},context:{used:0,limit:1048576,percent:0,costText:'$0.00 (estimated)'},lsp:[],todos:[],folder:'—',branch:'—',version:''};
+  const g=p.goal||{st:'pending',dod:[],oos:[]};
+  const ctx=p.context||{used:0,limit:1048576,percent:0,costText:'$0.00 (estimated)'};
+  const goalBody=(g.st==='pending'?'':'<div class="kv"><span>Status</span><b>'+escHtml(g.st)+'</b></div>')+'<div class="gh">Definition of done</div>'+(g.dod.length?g.dod.map(x=>'<div class="gl">'+escHtml(x)+'</div>').join(''):'<div class="empty">No definition of done yet.</div>')+'<div class="gh">Out of scope</div>'+(g.oos.length?g.oos.map(x=>'<div class="gl">'+escHtml(x)+'</div>').join(''):'<div class="empty">Nothing excluded yet.</div>')+'<div class="ga"><button class="gb" data-g="approve">Approve</button><button class="gb" data-g="edit">Edit</button><button class="gb" data-g="regenerate">Regenerate</button><button class="gb" data-g="skip">Skip</button></div>';
+  const tokens=composerApi&&composerMetrics&&composerSelection?composerApi.statusParts(composerMetrics,composerSelection).tokens:Math.round(ctx.used/1000)/10+'k / '+Math.round(ctx.limit/1000)/10+'k ('+ctx.percent+'%)';
+  const counts=parityApi?parityApi.mcpCounts(liveMcp):{connected:0,total:liveMcp.length,bad:0};
+  const lsp=p.lsp.length?p.lsp.map(x=>'<div class="mcpr"><b>'+escHtml(x.name)+'</b><em>'+escHtml(x.status)+(x.root?' · '+escHtml(x.root):'')+'</em></div>').join(''):'<div class="mcpr off">LSPs are disabled</div>';
+  const todo=p.todos.length?p.todos.map(t=>'<div class="todo '+(t.status==='completed'?'dn':t.status==='in_progress'?'ip':t.status==='cancelled'?'cancelled':'')+'"><span class="bx"></span><span>'+escHtml(t.content)+'</span></div>').join(''):'<div class="empty">No todo yet.</div>';
   $('#rpanel').innerHTML=
    sec('goal','Goal definition','<span class="pill">DOD('+g.dod.length+')</span> <span class="pill">OOS('+g.oos.length+')</span>',goalBody)+
-   sec('ctx','Context','',
-     '<div class="kv"><span>'+S.ctx+'k tokens</span><b>'+Math.round(S.ctx/10)+'% used</b></div><div class="bar"><i style="transform:scaleX('+Math.min(1,S.ctx/1000)+')"></i></div><div class="kv"><span>Cost</span><b>$0.00 (estimated)</b></div>')+
-   sec('mcp','MCP',mc+'/'+MCPS.length,MCPS.map(m=>'<div class="mcpr'+(m.on?'':' off')+'">'+m.n+'<em>'+(m.on?'Connected':'Disabled')+'</em></div>').join(''))+
-   sec('lsp','LSP','','<div class="mcpr off">LSPs are disabled</div>')+
-   sec('todo','Todo','',TODO.map(t=>'<div class="todo '+t[1]+'"><span class="bx"></span><span>'+t[0]+'</span></div>').join(''))+
-   '<div class="rfoot"><div><b>~/Documents/</b>opencodev2web:main</div><div>• Opencodev2 2.4.31</div></div>';
-  document.querySelectorAll('.rh').forEach(h=>h.onclick=()=>{const id=h.parentNode.dataset.id;shut[id]=!shut[id];rp();});
-  document.querySelectorAll('.gb').forEach(b=>b.onclick=()=>H['goal-'+b.dataset.g]());
+   sec('ctx','Context','','<div class="kv"><span>'+escHtml(tokens)+'</span><b>'+ctx.percent+'% used</b></div><div class="bar"><i style="transform:scaleX('+Math.min(1,ctx.percent/100)+')"></i></div><div class="kv"><span>Cost</span><b>'+escHtml(ctx.costText)+'</b></div>')+
+   sec('mcp','MCP',counts.connected+'/'+counts.total,liveMcp.length?liveMcp.map(mcpRowHtml).join(''):'<div class="empty">No MCP server reported.</div>')+
+   sec('lsp','LSP',p.lsp.length?String(p.lsp.length):'',lsp)+
+   sec('todo','Todo','',todo)+
+   '<div class="rfoot"><div><b>'+escHtml(p.folder||'—')+'</b>:'+escHtml(p.branch||'—')+'</div><div>• Opencodev2 '+escHtml(p.version||'—')+'</div></div>';
+  bind();
 }
 $('#rpT').onclick=()=>{app.classList.toggle('rp');setLift();};
 $('#goalb').onclick=()=>{app.classList.add('rp');shut.goal=false;rp();};
@@ -340,6 +456,7 @@ function setModel(v){
     composerSelection={...composerSelection,modelID:v,providerID:model?.providerID||'',modelName:model?.name||v,variant:variants[0]||'default'};
     if(composerMetrics&&model?.limit?.context){composerMetrics={...composerMetrics,limit:model.limit.context,percent:Math.round(composerMetrics.used/model.limit.context*100)};}
     S.variant=composerSelection.variant;$('#vV').textContent=S.variant;
+    void refreshPanel(currentSessionID);
   }
   pops();status();
 }
@@ -383,12 +500,12 @@ function applyComposerSession(loaded){
   composerMetrics=composerApi.sessionMetrics(loaded.session,loaded.messages,model);
   S.agent=composerSelection.agent;S.model=composerSelection.modelID;S.variant=composerSelection.variant;
   $('#vA').textContent=S.agent;$('#vM').textContent=S.model;$('#vV').textContent=S.variant;
-  running=!!loaded.busy;setRun();pops();status();
+  running=!!loaded.busy;setRun();pops();status();void refreshPanel(currentSessionID);
   if(running)startComposerPolling(currentSessionID);else stopComposerPolling();
 }
 
-/* ---------- LES COMMANDES : la liste complète du CLI ---------- */
-const CMD=[
+/* ---------- LES COMMANDES : base figée en démo, commandes MCP réelles serveur sinon ---------- */
+const DEMO_CMD=[
 ['agents','Switch agent'],['compact','Compact session'],['config','Open config editor'],['connect','Connect provider'],['copy','Copy session transcript'],
 ['decision-model','Set the decision model (all Jev features and scoring passes)'],['diff','Open diff viewer'],['editor','Open editor'],['exit','Exit the app'],['export','Export session transcript'],
 ['fork','Fork session'],['git:git_wrapup:mcp','Orchestrates a full git wrap-up: loads the project-aware acceptance-criteria protocol from git…','mcp'],
@@ -404,6 +521,8 @@ const CMD=[
 ['undo','Undo previous message'],['variants','Switch model variant'],['video-analysis','Analyze a video — YouTube or any platform URL, direct link, or local file — with transcript…','skill'],
 ['vision-model','Set image fallback (vision) model']
 ].map(x=>({n:'/'+x[0],k:x[0],d:x[1],tag:x[2]||''}));
+const CMD_BASE=DEMO_CMD.filter(c=>c.tag!=='mcp').map(c=>({...c}));
+const CMD=DEMO?DEMO_CMD.map(c=>({...c})):CMD_BASE.map(c=>({...c}));
 const lst=a=>a.map(x=>[x,'']);
 const H={
  agents:()=>openList('Switch agent',AG,S.agent,setAgent),
@@ -417,17 +536,15 @@ const H={
  exit:()=>toast('Exit : ferme l’onglet dans l’app réelle'),
  export:()=>toast('Transcript exporté en Markdown (simulé)'),
  fork:()=>{const w=WS[2];w.s.unshift({t:'Correctif dépôt divergent (fork)',m:'now'});w.open=true;openSession(2,0);toast('Session forked');},
- 'goal-approve':()=>{GOAL.st='approved';app.classList.add('rp');rp();toast('Goal approved');},
- 'goal-edit':()=>{GOAL.st='editing';app.classList.add('rp');rp();toast('Goal : édition');},
- 'goal-generate':()=>{GOAL.st='generated';app.classList.add('rp');rp();toast('Goal generated');},
- 'goal-regenerate':()=>{GOAL.st='regenerated';app.classList.add('rp');rp();toast('Goal regenerated');},
- 'goal-skip':()=>{GOAL.st='skipped';app.classList.add('rp');rp();toast('Goal skipped');},
+ 'goal-approve':()=>setGoalState('approved'),
+ 'goal-edit':()=>setGoalState('editing'),
+ 'goal-generate':()=>setGoalState('generated'),
+ 'goal-regenerate':()=>setGoalState('regenerated'),
+ 'goal-skip':()=>setGoalState('skipped'),
  help:()=>openDlg('<h3>Help<kbd>Esc</kbd></h3>'+[['/','commands'],['@','tag files or sessions'],['ctrl+p','command palette'],['alt+n','new session'],['ctrl+r','rename session'],['ctrl+d','delete session'],['esc','interrupt'],['enter','queue (while running)'],['alt+s','steer']].map(x=>'<div class="krow"><span>'+x[1]+'</span><kbd>'+x[0]+'</kbd></div>').join('')),
  init:()=>append(R.edit('AGENTS.md',{i:0,l:1,a:'+42',d:'-0',t:'4ms'})+R.p('<code>AGENTS.md</code> créé : conventions, commandes de test et règles du dépôt.',{l:1,i:1})),
  logs:()=>switchTab('logs'),
- mcps:()=>{const draw=()=>openDlg('<h3>Toggle MCPs<kbd>Esc</kbd></h3><div id="ml">'+MCPS.map((m,k)=>'<div class="mi" data-k="'+k+'"><b>'+m.n+'</b><span class="d">'+(m.on?'Connected':'Disabled')+'</span><span class="sw'+(m.on?' on':'')+'"></span></div>').join('')+'</div>');
-   draw();$('#ml').onclick=e=>{const it=e.target.closest('.mi');if(!it)return;const m=MCPS[+it.dataset.k];m.on=!m.on;rp();const t=$('#dlg').scrollTop;draw();$('#dlg').scrollTop=t;$('#ml').onclick=arguments.callee;};
-   },
+ mcps:()=>void openMcpDialog(),
  models:()=>openList('Switch model',MO,S.model,setModel),
  new:async()=>{
   if(DEMO){sel=null;renderTree();ta.value='';welcome();ta.focus();return;}
@@ -435,8 +552,7 @@ const H={
   try{
     const created=await dataApi.createSession();
     currentSessionID=created.id;
-    const workspaces=await dataApi.loadSidebarData();
-    WS.splice(0,WS.length,...workspaces);renderTree();
+    await reloadWorkspaces();
     for(let wi=0;wi<WS.length;wi++){const si=WS[wi].s.findIndex(s=>s.id===created.id);if(si>=0){openSession(wi,si);break;}}
   }catch(e){console.error(e);toast('Création impossible');}
 },
@@ -446,7 +562,7 @@ const H={
  sessions:()=>{const all=[];WS.forEach((w,wi)=>w.s.forEach((s,si)=>all.push([s.t,w.n+' · '+s.m,wi,si])));openList('Switch session',all.map(x=>[x[0],x[1]]),$('#title').textContent,n=>{const x=all.find(y=>y[0]===n);openSession(x[2],x[3]);});},
  share:()=>toast('Lien de partage local copié (simulé)'),
  skills:()=>openDlg('<h3>Skills<kbd>Esc</kbd></h3>'+CMD.filter(c=>c.tag==='skill').map(c=>'<div class="krow"><span><b style="font-family:var(--mono);color:var(--tx)">'+c.n+'</b></span><span style="max-width:60%;text-align:right;color:var(--tx-3)">'+c.d+'</span></div>').join('')),
- status:()=>openDlg('<h3>Status<kbd>Esc</kbd></h3>'+[['Version','OpenCodev2 2.4.31'],['Server','http://127.0.0.1:4097'],['Repo','Neoxff/opencodev2 · main'],['Agent',S.agent],['Model',S.model+' · '+S.variant],['Context',S.ctx+'k / 1.0M'],['MCP',MCPS.filter(m=>m.on).length+'/'+MCPS.length+' connected'],['LSP','disabled']].map(x=>'<div class="krow"><span>'+x[0]+'</span><b style="font-weight:500;color:var(--tx)">'+x[1]+'</b></div>').join('')),
+ status:()=>void openStatusDialog(),
  subagent:()=>openDlg('<h3>Subagents<kbd>Esc</kbd></h3>'+AG.map(a=>'<div class="krow"><span><b style="color:var(--tx);font-weight:500">'+a[0]+'</b></span><span style="color:var(--tx-3)">'+a[1]+'</span></div>').join('')),
  themes:()=>openList('Switch theme',[['Noir pur','default'],['Noir contraste élevé',''],['Noir chaud','accent ambre']],null,n=>{document.documentElement.dataset.th=n.includes('contraste')?'contrast':n.includes('chaud')?'warm':'';toast('Theme : '+n);}),
  thinking:()=>{col.classList.toggle('think');toast(col.classList.contains('think')?'Thinking expanded':'Thinking collapsed');},
@@ -510,11 +626,10 @@ async function ensureCurrentSession(){
   if(!dataApi)return null;
   try{
     const created=await dataApi.createSession();
-    const workspaces=await dataApi.loadSidebarData();
-    WS.splice(0,WS.length,...workspaces);disableArchived();renderTree();
+    currentSessionID=created.id;
+    await reloadWorkspaces();disableArchived();renderTree();
     const found=findMaquetteSession(created.id);
     if(found)openSession(found[0],found[1]);
-    currentSessionID=created.id;
     $('#title').textContent=created.title||'New session';$('#goalb').style.opacity=1;
     panel.classList.remove('is-welcome');setLift();
     return created.id;
@@ -618,14 +733,17 @@ if(innerWidth<1360)app.classList.remove('rp');
 async function bootData(){
   if(DEMO)return true;
   try{
-    const [data,composer,config]=await Promise.all([import('/ui/data.js'),import('/ui/composer.js'),import('/ui/config-logs.js')]);
-    dataApi=data;composerApi=composer;configApi=config;
+    const [data,composer,config,parity]=await Promise.all([
+      import('/ui/data.js'),import('/ui/composer.js'),import('/ui/config-logs.js'),import('/ui/parity.js')
+    ]);
+    dataApi=data;composerApi=composer;configApi=config;parityApi=parity;
     const caps=await configApi.loadCapabilities().catch(()=>({canSteer:false}));canSteer=!!caps.canSteer;
-    const [workspaces,composerConfig]=await Promise.all([dataApi.loadSidebarData(),composerApi.loadComposerConfig()]);
-    WS.splice(0,WS.length,...workspaces);
+    const composerConfig=await composerApi.loadComposerConfig();
+    await reloadWorkspaces();
     applyComposerConfig(composerConfig);
     canSteer=canSteer||!!composerConfig?.canSteer;
-    disableArchived();
+    wireFootFolds();refreshLiveData();
+    void refreshPanel('');
     return true;
   }catch(e){console.error(e);toast('Données indisponibles');return false;}
 }
