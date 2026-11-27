@@ -15,3 +15,5 @@
 /* 3 */ .srv-mcp{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}
 /* 4 */ .mcpr.bad b,.mcpr.bad em{color:#ffb4a8}
 /* 5 */ .todo.cancelled span{text-decoration:line-through;color:var(--tx-3)}
+/* 6 */ .dev{max-width:calc(258px - 24px);flex-wrap:wrap;gap:3px;padding:3px;border-radius:14px}
+/* 7 */ .dev button{font-size:10.5px;padding:4px 5px}

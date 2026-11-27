@@ -35,7 +35,8 @@ export function buildWorkspaces(
   limite?: number,
 ): MaquetteWorkspace[]
 export function loadSidebarData(fetchImpl?: typeof fetch, maintenant?: number, limite?: number): Promise<MaquetteWorkspace[]>
-export function createSession(fetchImpl?: typeof fetch, payload?: Record<string, unknown>): Promise<unknown>
+export function createSession(fetchImpl?: typeof fetch, payload?: Record<string, unknown>, directory?: string): Promise<unknown>
+export function fetchFolders(path: string, fetchImpl?: typeof fetch): Promise<{ path: string; parent: string | null; entries: Array<{ name: string; path: string }> }>
 export function loadSession(
   sessionID: string,
   fetchImpl?: typeof fetch,

@@ -242,6 +242,28 @@ export function statusFromEvent(event) {
   return status.type !== "idle"
 }
 
+/**
+ * Applique un delta de texte à la partie visée. Rend le même tableau quand l'événement ne peut
+ * pas être appliqué : l'appelant peut alors décider d'une relecture au lieu d'afficher du faux.
+ */
+export function applyDelta(messages, event) {
+  const props = event?.properties ?? {}
+  if (event?.type !== "message.part.delta") return messages
+  const { messageID, partID, field, delta } = props
+  if (typeof messageID !== "string" || typeof partID !== "string" || typeof field !== "string" || typeof delta !== "string") return messages
+  if (!Array.isArray(messages)) return messages
+  const at = messages.findIndex((message) => message?.info?.id === messageID)
+  if (at < 0) return messages
+  const parts = Array.isArray(messages[at].parts) ? messages[at].parts : []
+  const pi = parts.findIndex((part) => part?.id === partID)
+  if (pi < 0) return messages
+  const grown = parts.slice()
+  grown[pi] = { ...parts[pi], [field]: String(parts[pi][field] ?? "") + delta }
+  const clone = messages.slice()
+  clone[at] = { ...messages[at], parts: grown }
+  return clone
+}
+
 /** Marque le dernier prompt utilisateur sans réponse comme « queued » pendant un tour actif. */
 export function queuedUserIDs(messages, busy) {
   const result = {}

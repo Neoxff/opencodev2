@@ -40,6 +40,7 @@ export function formatDuration(ms: number): string
 export function eventToLines(event: unknown, ctx?: EventContext): ConversationLine[]
 export function unwrapGlobalEvent(data: unknown): { id?: string; type: string; properties: Record<string, unknown> } | undefined
 export function statusFromEvent(event: unknown): boolean | undefined
+export function applyDelta(messages: unknown, event: unknown): unknown[]
 export function queuedUserIDs(messages: unknown, busy: boolean): Record<string, boolean>
 export function goalFromSession(session: unknown, todos: unknown): GoalView
 export function buildConversation(messages: unknown, diffs: unknown, ctx?: EventContext): ConversationLine[]

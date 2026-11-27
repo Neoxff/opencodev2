@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
 import {
+  applyDelta,
   buildConversation,
   eventToLines,
   formatDuration,
@@ -231,5 +232,34 @@ describe("ui conversation — événements enregistrés", () => {
         ],
       ),
     ).toEqual({ st: "in progress", dod: ["Première porte", "Seconde porte"], oos: [] })
+  })
+
+  test("applyDelta accumule le texte progressif sans ecraser les autres parties", () => {
+    const messages = [
+      { info: { id: "m1", role: "user" }, parts: [{ id: "p0", type: "text", text: "salut" }] },
+      { info: { id: "m2", role: "assistant" }, parts: [{ id: "p1", type: "text", text: "" }] },
+    ]
+    const once = applyDelta(messages, {
+      type: "message.part.delta",
+      properties: { sessionID: SESSION, messageID: "m2", partID: "p1", field: "text", delta: "bon" },
+    }) as typeof messages
+    const twice = applyDelta(once, {
+      type: "message.part.delta",
+      properties: { sessionID: SESSION, messageID: "m2", partID: "p1", field: "text", delta: "jour" },
+    }) as typeof messages
+    expect(twice[1].parts[0].text).toBe("bonjour")
+    expect(twice[0].parts[0].text).toBe("salut")
+    expect(messages[1].parts[0].text).toBe("")
+  })
+
+  test("applyDelta rend le meme tableau quand la partie est inconnue", () => {
+    const messages = [{ info: { id: "m1" }, parts: [{ id: "p0", type: "text", text: "x" }] }]
+    expect(
+      applyDelta(messages, {
+        type: "message.part.delta",
+        properties: { messageID: "m1", partID: "inconnu", field: "text", delta: "y" },
+      }),
+    ).toBe(messages)
+    expect(applyDelta(messages, { type: "session.status", properties: {} })).toBe(messages)
   })
 })

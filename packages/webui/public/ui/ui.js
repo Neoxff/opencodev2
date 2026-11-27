@@ -16,7 +16,7 @@ let running=false,tab='conv',sel=null,timers=[];
 let dataApi=null,configApi=null,currentSession=null,currentSessionID=null;
 let parityApi=null,liveMcp=[],liveCommands=[],livePanel=null,workspaceLimit=3;
 let canSteer=false,configEditing=false,logTimer=null;
-let liveSource=null,liveSession=null,liveSeen=new Set(),liveIndex=0,liveMessages=[],liveRoles={},liveRunning=false;
+let liveSource=null,liveSession=null,liveSeen=new Set(),liveIndex=0,liveMessages=[],liveRoles={},liveRunning=false,liveConnected=false;
 const lineIndexByKey=new Map();
 
 const S={agent:'orchestrator',variant:'max',model:'Tidepool Alpha Free',decision:'Tidepool Alpha Free',vision:'Hy4 Flash Free',ctx:634,tps:52};
@@ -241,6 +241,10 @@ function handleLiveEvent(ev,sessionID){
     if(busy!==undefined){running=busy;liveRunning=busy;setRun();status();updateSessionBusy(sessionID,busy);}
     return;
   }
+  if(ev.type==='session.idle'){
+    running=false;liveRunning=false;setRun();status();updateSessionBusy(sessionID,false);
+    return;
+  }
   if(ev.type==='session.updated'){
     const info=p.info||{};
     if(info.title){
@@ -259,9 +263,28 @@ function handleLiveEvent(ev,sessionID){
     }
     return;
   }
+  if(ev.type==='message.part.delta'){
+    const grown=dataApi.applyDelta?dataApi.applyDelta(liveMessages,ev):liveMessages;
+    if(grown===liveMessages){void reloadConversation(sessionID);return;}
+    liveMessages=grown;
+    const part=grown.find(m=>m.info?.id===p.messageID)?.parts?.find(x=>x.id===p.partID);
+    if(part&&dataApi.eventToLines){
+      const line=dataApi.eventToLines({type:'message.part.updated',properties:{sessionID,part}},{sessionID,roles:liveRoles,queued:dataApi.queuedUserIDs(liveMessages,running)})[0];
+      if(line)upsertConversationLine(line);
+    }
+    return;
+  }
   if(ev.type==='message.part.updated'){
     const part=p.part||{};
     if(part.messageID&&!liveRoles[part.messageID])liveRoles[part.messageID]='assistant';
+    const mi=liveMessages.findIndex(m=>m.info?.id===part.messageID);
+    if(mi<0)liveMessages.push({info:{id:part.messageID,role:liveRoles[part.messageID]||'assistant'},parts:part.id?[part]:[]});
+    else{
+      const parts=Array.isArray(liveMessages[mi].parts)?liveMessages[mi].parts.slice():[];
+      const pi=part.id?parts.findIndex(x=>x.id===part.id):-1;
+      if(pi>=0)parts[pi]={...parts[pi],...part};else if(part.id)parts.push(part);
+      liveMessages[mi]={...liveMessages[mi],parts};
+    }
     const queued=dataApi.queuedUserIDs(liveMessages,running);
     for(const line of dataApi.eventToLines(ev,{sessionID,roles:liveRoles,queued}))upsertConversationLine(line);
     return;
@@ -270,12 +293,25 @@ function handleLiveEvent(ev,sessionID){
     for(const line of dataApi.eventToLines(ev,{sessionID,roles:liveRoles}))upsertConversationLine(line);
   }
 }
-function closeLiveStream(){if(liveSource){liveSource.close();liveSource=null;}liveSession=null;}
+function closeLiveStream(){if(liveSource){liveSource.close();liveSource=null;}liveSession=null;liveConnected=false;}
+async function reloadConversation(id){
+  if(!dataApi||id!==currentSessionID)return;
+  try{
+    const loaded=await dataApi.loadConversation(id);
+    if(id!==currentSessionID)return;
+    liveMessages=Array.isArray(loaded.messages)?[...loaded.messages]:[];
+    liveRoles={...(loaded.roles||{})};
+    renderConversation(loaded.lines||[]);
+    running=!!loaded.busy;liveRunning=running;setRun();status();
+    void refreshPanel(id);
+  }catch(e){console.error(e);}
+}
 function openLiveStream(sessionID){
   closeLiveStream();if(!sessionID||!dataApi)return;
   liveSession=sessionID;
   try{
     liveSource=new EventSource('/global/event');
+    liveSource.onopen=()=>{if(liveConnected)void reloadConversation(sessionID);liveConnected=true;};
     liveSource.onmessage=e=>{let raw;try{raw=JSON.parse(e.data);}catch{return;}
       const ev=dataApi.unwrapGlobalEvent(raw);if(ev)handleLiveEvent(ev,sessionID);};
   }catch(e){console.error(e);}
@@ -689,6 +725,38 @@ async function deleteSelected(){
   }catch(e){console.error(e);toast('Suppression impossible');}
 }
 $('#newbtn').onclick=()=>H.new();
+function openFolderPicker(){
+  if(!dataApi){toast('Données indisponibles');return;}
+  let path=currentSession?.directory||'/';
+  const draw=async()=>{
+    try{
+      const list=await dataApi.fetchFolders(path);
+      path=list.path;
+      const items=[
+        ...(list.parent?[{n:'..',p:list.parent,k:'parent'}]:[]),
+        ...(list.entries||[]).map(e=>({n:e.name,p:e.path,k:'folder'})),
+        {n:'✓ Démarrer ici',p:list.path,k:'select'},
+      ];
+      openDlg('<h3>Choose folder<kbd>Esc</kbd></h3><p class="d">'+escHtml(path)+'</p><div id="fpList">'+items.map((x,k)=>'<div class="mi" data-k="'+k+'"><b>'+escHtml(x.n)+'</b><span class="d">'+escHtml(x.k)+'</span></div>').join('')+'</div>');
+      $('#fpList').onclick=e=>{
+        const it=e.target.closest('.mi');if(!it)return;
+        const x=items[+it.dataset.k];closeDlg();
+        if(x.k==='select')void newSessionIn(path);else{path=x.p;void draw();}
+      };
+    }catch(err){toast(err.message||'Dossier impossible');}
+  };
+  void draw();
+}
+async function newSessionIn(directory){
+  try{
+    const created=await dataApi.createSession(undefined,{},directory);
+    currentSessionID=created.id;
+    await reloadWorkspaces();
+    for(let wi=0;wi<WS.length;wi++){const si=WS[wi].s.findIndex(s=>s.id===created.id);if(si>=0){openSession(wi,si);break;}}
+  }catch(e){console.error(e);toast('Création impossible');}
+}
+const addFolderBtn=document.querySelector('button[aria-label="Add folder"]');
+if(addFolderBtn)addFolderBtn.onclick=()=>openFolderPicker();
 $('#reopen').onclick=()=>{sel=null;renderTree();welcome();};
 
 /* ---------- Raccourcis clavier ---------- */

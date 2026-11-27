@@ -126,15 +126,26 @@ export async function loadSidebarData(fetchImpl = fetch, maintenant = Date.now()
   return buildWorkspaces(projects, sessions, statuses, maintenant, limite)
 }
 
-/** Crée une vraie session via POST /session. */
-export async function createSession(fetchImpl = fetch, payload = {}) {
-  const response = await fetchImpl("/session", {
+/** Crée une vraie session via POST /session, dans le dossier demande le cas echeant. */
+export async function createSession(fetchImpl = fetch, payload = {}, directory) {
+  const url = directory ? `/session?directory=${encodeURIComponent(directory)}` : "/session"
+  const response = await fetchImpl(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     credentials: "same-origin",
     body: JSON.stringify(payload),
   })
   if (!response.ok) throw new Error(`POST /session -> HTTP ${response.status}`)
+  return response.json()
+}
+
+/** Parcourt les dossiers d'un chemin absolu via GET /folder. Le refus est dit, jamais avale. */
+export async function fetchFolders(path, fetchImpl = fetch) {
+  const response = await fetchImpl(`/folder?path=${encodeURIComponent(path)}`, { credentials: "same-origin" })
+  if (!response.ok) {
+    const body = await response.json().catch(() => undefined)
+    throw new Error(body?.reason || `Ce dossier ne peut pas etre ouvert (${response.status})`)
+  }
   return response.json()
 }
 

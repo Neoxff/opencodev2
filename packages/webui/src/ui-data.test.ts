@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest"
 import {
   buildWorkspaces,
   createSession,
+  fetchFolders,
   loadSession,
   loadSidebarData,
   relativeTime,
@@ -134,5 +135,39 @@ describe("ui data access", () => {
       { role: "user", text: "salut" },
       { role: "assistant", text: "bonjour" },
     ])
+  })
+
+  test("createSession transmet le dossier choisi a POST /session", async () => {
+    const calls: string[] = []
+    const fetchImpl = (async (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : String(input)
+      calls.push(url)
+      return { ok: true, status: 200, json: async () => ({ id: "nouvelle", directory: "/proj/choisi" }) } as Response
+    }) as unknown as typeof fetch
+    const created = await createSession(fetchImpl, {}, "/proj/choisi")
+    expect(created).toMatchObject({ id: "nouvelle" })
+    expect(calls).toEqual(["/session?directory=%2Fproj%2Fchoisi"])
+  })
+
+  test("createSession sans dossier garde l'URL d'origine", async () => {
+    const calls: string[] = []
+    const fetchImpl = (async (input: string | URL | Request) => {
+      calls.push(typeof input === "string" ? input : String(input))
+      return { ok: true, status: 200, json: async () => ({}) } as Response
+    }) as unknown as typeof fetch
+    await createSession(fetchImpl)
+    expect(calls).toEqual(["/session"])
+  })
+
+  test("fetchFolders parcourt un chemin et dit le refus", async () => {
+    const listing = { path: "/proj", parent: "/", entries: [{ name: "choisi", path: "/proj/choisi" }] }
+    const readFetch = fakeFetch({ "/folder?path=%2Fproj": listing })
+    expect(await fetchFolders("/proj", readFetch)).toEqual(listing)
+    const badFetch = (async () => ({
+      ok: false,
+      status: 404,
+      json: async () => ({ reason: "path not found" }),
+    })) as unknown as typeof fetch
+    await expect(fetchFolders("/nope", badFetch)).rejects.toThrow("path not found")
   })
 })
